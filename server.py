@@ -3,7 +3,7 @@
 
 Fa da ponte verso la placca (web API sulla porta 80, autenticata con la sua
 password admin) e da pannello di configurazione del Pi (tunnel Cloudflare,
-indirizzi, credenziali). Serve solo /data/pin/ e /admin: tutto il resto e' 404.
+indirizzi, credenziali). Serve la pagina su / e il pannello su /admin: tutto il resto e' 404.
 
 I SEGRETI STANNO SOLO SUL PI, in /etc/citofono/ (file 600), MAI nel repository:
   citofono.conf   indirizzi e opzioni (PLACCA, MONITOR, porte, ADMIN_LAN_ONLY...)
@@ -493,11 +493,12 @@ class Gestore(http.server.BaseHTTPRequestHandler):
 
     def do_GET(self):
         p = self.path.split('?', 1)[0]
-        if p in ('/', '/data', '/data/', '/data/pin'):
-            return self.manda(302, 'text/plain; charset=utf-8', b'', {'Location': '/data/pin/'})
-        if p in ('/data/pin/', '/data/pin/index.html'):
+        # pagina dei PIN sulla radice (/); i vecchi percorsi /data/pin restano come alias
+        if p in ('/data', '/data/', '/data/pin'):
+            return self.manda(302, 'text/plain; charset=utf-8', b'', {'Location': '/'})
+        if p in ('/', '/index.html', '/data/pin/', '/data/pin/index.html'):
             return self._pagina(CONF['PAGINA'])
-        if p in ('/data/pin/admin', '/data/pin/admin.html', '/admin', '/admin/'):
+        if p in ('/admin', '/admin/', '/admin.html', '/data/pin/admin', '/data/pin/admin.html'):
             if CONF['ADMIN_LAN_ONLY'] == '1' and self.headers.get('Cf-Connecting-Ip'):
                 return self.manda(403, 'text/plain; charset=utf-8', b'il pannello admin si apre solo da casa\n')
             return self._pagina(CONF['ADMIN_PAGINA'])
@@ -506,7 +507,7 @@ class Gestore(http.server.BaseHTTPRequestHandler):
     do_HEAD = do_GET
 
     def do_POST(self):
-        if self.path.split('?', 1)[0] != '/data/pin/api.cgi':
+        if self.path.split('?', 1)[0] not in ('/api.cgi', '/data/pin/api.cgi'):
             return self.manda(404, 'text/plain; charset=utf-8', b'non trovato\n')
         try:
             n = int(self.headers.get('Content-Length', ''))
@@ -540,7 +541,7 @@ def main():
         ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         ctx.load_cert_chain(CONF['CERT'], CONF['CHIAVE_TLS'])
         server.socket = ctx.wrap_socket(server.socket, server_side=True)
-    print('citofono su %s://%s:%s/data/pin/  (admin: /admin)  -> placca %s' % (
+    print('citofono su %s://%s:%s/  (admin: /admin)  -> placca %s' % (
         'https' if CONF['CERT'] else 'http', CONF['INDIRIZZO'], CONF['PORTA'], CONF['PLACCA'] or '(da impostare)'),
         flush=True)
     server.serve_forever()

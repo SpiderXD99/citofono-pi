@@ -136,7 +136,7 @@
 
   <section class="scheda">
     <div class="riga">
-      <a href="/data/pin/"><button class="ghost" type="button">Vai alla pagina dei PIN</button></a>
+      <a href="/"><button class="ghost" type="button">Vai alla pagina dei PIN</button></a>
       <button id="bLogout" class="ghost" type="button">Esci</button>
     </div>
   </section>
@@ -148,7 +148,7 @@
 'use strict';
 (function(){
   const $=s=>document.querySelector(s);
-  const CGI='/data/pin/api.cgi';          // assoluto: la pagina puo' stare su /admin o /data/pin/admin.html
+  const CGI='/api.cgi';                    // assoluto: la pagina puo' stare su /admin o /data/pin/admin.html
   let placcaSid='';
   let pubblico='';                        // hostname del tunnel, per il link "raggiungibile qui"
 
@@ -225,7 +225,7 @@
     $('#tFerma').disabled=!t.attivo;
     const link=$('#tLink');
     if(t.attivo&&pubblico){
-      const url='https://'+pubblico+'/data/pin/';
+      const url='https://'+pubblico+'/';
       link.innerHTML='Raggiungibile qui: <a href="'+url+'" target="_blank" rel="noopener">'+url+'</a>';
       link.classList.remove('nascosto');
     }else if(t.attivo&&!pubblico){

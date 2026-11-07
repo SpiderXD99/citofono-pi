@@ -34,10 +34,10 @@ dovesse finire in un commit, va considerato compromesso e **rigenerato** su Clou
 Altre scelte di sicurezza:
 - il pannello admin ha una password propria (minimo 12 caratteri), con **blocco
   dopo pochi tentativi** sbagliati e sessione via cookie `HttpOnly`/`SameSite`;
-- se esponi il pannello via tunnel, è protetto **solo** da quella password: tienila
-  lunga. Puoi anche chiuderlo alla sola rete di casa con `ADMIN_LAN_ONLY=1`;
-- il tunnel instrada **solo** il percorso `data/pin` (vedi sotto): da Internet non
-  si raggiunge il resto del Pi.
+- il tunnel instrada l'intero host: da Internet la pagina dei PIN è su `/` e il
+  pannello su `/admin`. Il pannello è protetto **solo** dalla password: tienila
+  lunga. Se preferisci non esporlo, chiudilo alla sola rete di casa con
+  `ADMIN_LAN_ONLY=1` (allora da fuori resta solo la pagina dei PIN).
 
 ## Installazione sul Pi
 
@@ -54,7 +54,7 @@ L'installer chiede l'IP della placca, l'URL del monitor (facoltativo) e la
 password del pannello; installa `cloudflared`, crea il certificato e avvia il
 servizio. Alla fine stampa gli indirizzi:
 
-- pagina PIN: `https://IP_DEL_PI/data/pin/`
+- pagina PIN: `https://IP_DEL_PI/`
 - pannello: `https://IP_DEL_PI/admin`
 
 Il browser avvisa del certificato autofirmato: è atteso, accetta.
@@ -62,9 +62,11 @@ Il browser avvisa del certificato autofirmato: è atteso, accetta.
 ## Tunnel Cloudflare (accesso da fuori)
 
 Nel pannello, incolla il **token** del tunnel e premi **Avvia**. Su Cloudflare, nel
-tunnel, imposta una rotta: hostname a tua scelta, **Path `data/pin`**, servizio
-`https://localhost:443` (o `https://IP_DEL_PI:443`) con **No TLS Verify**. Così da
-Internet si raggiunge solo la pagina, non il resto.
+tunnel, imposta una rotta: hostname a tua scelta, **Path vuoto** (l'intero host),
+servizio `https://localhost:443` (o `https://IP_DEL_PI:443`) con **No TLS Verify**.
+Così da Internet la pagina è su `https://TUO-HOST/` e il pannello su
+`https://TUO-HOST/admin`. Scrivi l'hostname anche nel campo **Indirizzo pubblico
+del tunnel** del pannello: così, a tunnel attivo, ti mostra il link pronto.
 
 ## Aggiornamenti
 
