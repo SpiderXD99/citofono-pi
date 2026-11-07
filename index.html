@@ -1069,18 +1069,17 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
 </script>
 <script>
 'use strict';
-// gesto nascosto: 5 tocchi veloci sull'icona (o sul titolo) aprono il pannello admin
+// gesto nascosto: 5 tocchi veloci sull'icona aprono il pannello admin
 (function () {
+  var el = document.querySelector('.barra .logo');
+  if (!el) return;
+  el.style.cursor = 'pointer';
   var n = 0, ultimo = 0;
-  function tocco() {
+  el.addEventListener('click', function () {
     var ora = Date.now();
     n = (ora - ultimo < 1500) ? n + 1 : 1;
     ultimo = ora;
     if (n >= 5) { n = 0; location.href = '/admin'; }
-  }
-  ['.barra .logo', '.barra .titolo'].forEach(function (sel) {
-    var el = document.querySelector(sel);
-    if (el) { el.style.cursor = 'pointer'; el.addEventListener('click', tocco); }
   });
 })();
 </script>
