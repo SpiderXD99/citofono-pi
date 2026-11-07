@@ -6,12 +6,15 @@
 <meta name="color-scheme" content="light dark">
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; form-action 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; form-action 'none'; base-uri 'none'">
+<meta name="theme-color" content="#1d5fd1">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Citofono">
 <title>Citofono PIN</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231d5fd1'/%3E%3Cg fill='%23fff'%3E%3Ccircle cx='20' cy='20' r='5'/%3E%3Ccircle cx='32' cy='20' r='5'/%3E%3Ccircle cx='44' cy='20' r='5'/%3E%3Ccircle cx='20' cy='32' r='5'/%3E%3Ccircle cx='32' cy='32' r='5'/%3E%3Ccircle cx='44' cy='32' r='5'/%3E%3Ccircle cx='20' cy='44' r='5'/%3E%3Ccircle cx='32' cy='44' r='5'/%3E%3Ccircle cx='44' cy='44' r='5'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231d5fd1'/%3E%3Cg fill='%23fff'%3E%3Ccircle cx='20' cy='20' r='5'/%3E%3Ccircle cx='32' cy='20' r='5'/%3E%3Ccircle cx='44' cy='20' r='5'/%3E%3Ccircle cx='20' cy='32' r='5'/%3E%3Ccircle cx='32' cy='32' r='5'/%3E%3Ccircle cx='44' cy='32' r='5'/%3E%3Ccircle cx='20' cy='44' r='5'/%3E%3Ccircle cx='32' cy='44' r='5'/%3E%3Ccircle cx='44' cy='44' r='5'/%3E%3C/g%3E%3C/svg%3E">
 <style>
 :root {
   --bg: #f3f5f8; --card: #ffffff; --text: #111827; --muted: #5d6877; --line: #e1e6ed;
@@ -1015,6 +1018,51 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
     mostra('accesso');
   }
   avvio();
+})();
+</script>
+<div id="installApp" class="installa" hidden>
+  <svg class="iico" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#1d5fd1"/><g fill="#fff"><circle cx="20" cy="20" r="5"/><circle cx="32" cy="20" r="5"/><circle cx="44" cy="20" r="5"/><circle cx="20" cy="32" r="5"/><circle cx="32" cy="32" r="5"/><circle cx="44" cy="32" r="5"/><circle cx="20" cy="44" r="5"/><circle cx="32" cy="44" r="5"/><circle cx="44" cy="44" r="5"/></g></svg>
+  <div class="itxt"><strong>Installa Citofono</strong><span id="installMsg">Aggiungila alla schermata Home: si apre come un'app, a schermo intero.</span></div>
+  <div class="ibtn">
+    <button id="installSi" class="btn primario piccolo" hidden>Installa</button>
+    <button id="installNo" class="btn piccolo" aria-label="Chiudi">✕</button>
+  </div>
+</div>
+<style>
+.installa{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:20;
+  display:flex;align-items:center;gap:12px;max-width:616px;margin:0 auto;
+  background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;box-shadow:0 10px 30px rgb(0 0 0 / .25)}
+.installa .iico{width:38px;height:38px;border-radius:9px;flex:none}
+.installa .itxt{flex:1;min-width:0;font-size:13px;line-height:1.35}
+.installa .itxt strong{display:block;font-size:15px;margin-bottom:1px}
+.installa .itxt span{color:var(--muted)}
+.installa .ibtn{display:flex;gap:8px;align-items:center;flex:none}
+</style>
+<script>
+'use strict';
+(function () {
+  if ('serviceWorker' in navigator) { navigator.serviceWorker.register('/sw.js').catch(function(){}); }
+  var banner = document.getElementById('installApp');
+  var msg = document.getElementById('installMsg');
+  var si = document.getElementById('installSi');
+  var no = document.getElementById('installNo');
+  var CH = 'citofono-installa-no';
+  var standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+  function rifiutato(){ try { return localStorage.getItem(CH) === '1'; } catch (e) { return false; } }
+  function nascondi(ricorda){ banner.hidden = true; if (ricorda) { try { localStorage.setItem(CH, '1'); } catch (e) {} } }
+  no.addEventListener('click', function(){ nascondi(true); });
+  if (standalone || rifiutato()) return;           // gia' installata, o gia' rifiutata
+  var evt = null;
+  // Android / Chrome: evento nativo di installazione
+  window.addEventListener('beforeinstallprompt', function(e){ e.preventDefault(); evt = e; si.hidden = false; banner.hidden = false; });
+  window.addEventListener('appinstalled', function(){ nascondi(true); });
+  si.addEventListener('click', async function(){ if (!evt) return; nascondi(false); evt.prompt(); try { await evt.userChoice; } catch (e) {} evt = null; });
+  // iPhone / iPad: nessun evento, si aggiunge a mano dal menu Condividi
+  if (/iphone|ipad|ipod/i.test(navigator.userAgent)) {
+    si.hidden = true;
+    msg.textContent = 'Tocca Condividi, poi "Aggiungi a Home", per aprirla come un’app.';
+    banner.hidden = false;
+  }
 })();
 </script>
 </body>

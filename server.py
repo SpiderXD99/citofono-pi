@@ -64,6 +64,23 @@ MAX_FAIL, BLOCCO = 5, 300                  # 5 errori -> 5 minuti di blocco
 CONF = dict(PREDEFINITI)
 VERSIONE = []
 
+# --- PWA: la pagina si puo' installare come app dal telefono ---
+_ICONA = ("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E"
+          "%3Crect width='64' height='64' rx='14' fill='%231d5fd1'/%3E%3Cg fill='%23fff'%3E"
+          "%3Ccircle cx='20' cy='20' r='5'/%3E%3Ccircle cx='32' cy='20' r='5'/%3E%3Ccircle cx='44' cy='20' r='5'/%3E"
+          "%3Ccircle cx='20' cy='32' r='5'/%3E%3Ccircle cx='32' cy='32' r='5'/%3E%3Ccircle cx='44' cy='32' r='5'/%3E"
+          "%3Ccircle cx='20' cy='44' r='5'/%3E%3Ccircle cx='32' cy='44' r='5'/%3E%3Ccircle cx='44' cy='44' r='5'/%3E"
+          "%3C/g%3E%3C/svg%3E")
+MANIFEST = json.dumps({
+    'name': 'Citofono PIN', 'short_name': 'Citofono', 'start_url': '/', 'scope': '/',
+    'display': 'standalone', 'background_color': '#0c1117', 'theme_color': '#1d5fd1',
+    'icons': [{'src': _ICONA, 'sizes': '192x192', 'type': 'image/svg+xml', 'purpose': 'any'},
+              {'src': _ICONA, 'sizes': '512x512', 'type': 'image/svg+xml', 'purpose': 'maskable'}],
+}).encode('utf-8')
+SW = (b"self.addEventListener('install',function(e){self.skipWaiting();});\n"
+      b"self.addEventListener('activate',function(e){e.waitUntil(self.clients.claim());});\n"
+      b"self.addEventListener('fetch',function(e){});\n")
+
 
 class Errore(Exception):
     def __init__(self, stato, testo):
@@ -502,6 +519,10 @@ class Gestore(http.server.BaseHTTPRequestHandler):
             if CONF['ADMIN_LAN_ONLY'] == '1' and self.headers.get('Cf-Connecting-Ip'):
                 return self.manda(403, 'text/plain; charset=utf-8', b'il pannello admin si apre solo da casa\n')
             return self._pagina(CONF['ADMIN_PAGINA'])
+        if p == '/manifest.webmanifest':
+            return self.manda(200, 'application/manifest+json; charset=utf-8', MANIFEST)
+        if p == '/sw.js':
+            return self.manda(200, 'text/javascript; charset=utf-8', SW)
         self.manda(404, 'text/plain; charset=utf-8', b'non trovato\n')
 
     do_HEAD = do_GET
