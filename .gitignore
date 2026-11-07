@@ -1,0 +1,14 @@
+# I SEGRETI NON ENTRANO MAI NEL REPO. Vivono solo sul Pi, in /etc/citofono/.
+# Qui li ignoriamo per sicurezza, nel caso qualcuno li copiasse per sbaglio.
+*.pem
+tunnel.env
+admin.json
+
+# configurazione reale: sta in /etc/citofono/citofono.conf.
+# Nel repo c'e' solo il modello citofono.conf (senza dati veri).
+/etc/
+
+# varie
+__pycache__/
+*.pyc
+*.log

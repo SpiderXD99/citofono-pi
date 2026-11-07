@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Citofono — pannello</title>
+<style>
+  :root{
+    --bg:#f4f5f7; --card:#fff; --testo:#1a1d21; --tenue:#5c636e; --bordo:#d8dde3;
+    --primario:#1769d6; --primario-t:#fff; --ok:#1a7f45; --err:#c0392b; --campo:#fff;
+  }
+  :root:not([data-theme="light"]){ @media (prefers-color-scheme:dark){
+    :root{ --bg:#15171b; --card:#1e2127; --testo:#e8eaed; --tenue:#9aa3ad; --bordo:#333842;
+      --primario:#4a93f0; --primario-t:#0a0d12; --ok:#56c585; --err:#ef7a6e; --campo:#262a31; }
+  }}
+  :root[data-theme="dark"]{ --bg:#15171b; --card:#1e2127; --testo:#e8eaed; --tenue:#9aa3ad;
+    --bordo:#333842; --primario:#4a93f0; --primario-t:#0a0d12; --ok:#56c585; --err:#ef7a6e; --campo:#262a31; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--testo);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    padding:16px;max-width:720px;margin:0 auto}
+  h1{font-size:1.4rem;margin:.4em 0}
+  h2{font-size:1.05rem;margin:0 0 .6em}
+  .scheda{background:var(--card);border:1px solid var(--bordo);border-radius:12px;padding:16px;margin:14px 0}
+  label{display:block;margin:.5em 0;font-size:.95rem}
+  label small{color:var(--tenue);font-weight:400}
+  input{width:100%;padding:.55em .7em;margin-top:.25em;background:var(--campo);color:var(--testo);
+    border:1px solid var(--bordo);border-radius:8px;font:inherit}
+  button{padding:.55em 1em;border:0;border-radius:8px;font:inherit;font-weight:600;cursor:pointer;
+    background:var(--primario);color:var(--primario-t)}
+  button.sec{background:transparent;color:var(--primario);border:1px solid var(--primario)}
+  button.ghost{background:transparent;color:var(--tenue);border:1px solid var(--bordo);font-weight:400}
+  button:disabled{opacity:.5;cursor:default}
+  .riga{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:.6em}
+  .nota{color:var(--tenue);font-size:.88rem}
+  .err{color:var(--err);font-size:.9rem;min-height:1.2em}
+  .ok{color:var(--ok)}
+  .stato{display:inline-block;padding:.15em .6em;border-radius:999px;font-size:.85rem;border:1px solid var(--bordo)}
+  .stato.on{color:var(--ok);border-color:var(--ok)} .stato.off{color:var(--tenue)}
+  pre{white-space:pre-wrap;background:var(--campo);border:1px solid var(--bordo);border-radius:8px;padding:10px;font-size:.85rem;max-height:40vh;overflow:auto}
+  .nascosto{display:none}
+  .avviso{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:var(--card);
+    border:1px solid var(--bordo);border-radius:10px;padding:.6em 1em;box-shadow:0 6px 24px #0004;opacity:0;transition:.2s}
+  .avviso.vedi{opacity:1}
+</style>
+</head>
+<body>
+<h1>Citofono — pannello</h1>
+
+<!-- LOGIN -->
+<section id="vLogin" class="scheda">
+  <h2>Accesso al pannello</h2>
+  <form id="fLogin" autocomplete="off">
+    <label>Utente<input name="utente" autocomplete="username"></label>
+    <label>Password<input name="password" type="password" autocomplete="current-password"></label>
+    <div class="riga"><button>Entra</button></div>
+    <p class="err" id="eLogin" role="alert"></p>
+  </form>
+  <p class="nota">Il pannello imposta token e password: proteggilo con una password lunga.
+    Dopo alcuni tentativi sbagliati l'accesso si blocca per qualche minuto.</p>
+</section>
+
+<!-- PANNELLO -->
+<div id="vPanel" class="nascosto">
+
+  <section class="scheda">
+    <h2>Tunnel Cloudflare <span id="tStato" class="stato off">…</span></h2>
+    <p class="nota" id="tInfo"></p>
+    <div class="riga">
+      <button id="tAvvia" class="sec">Avvia</button>
+      <button id="tFerma" class="sec">Ferma</button>
+      <button id="tAgg" class="ghost">Aggiorna</button>
+    </div>
+    <form id="fToken" autocomplete="off" style="margin-top:1em">
+      <label>Token del tunnel <small>(la stringa che inizia con eyJ)</small>
+        <input name="token" type="password" placeholder="eyJ…"></label>
+      <div class="riga"><button>Salva token</button></div>
+      <p class="err" id="eToken"></p>
+    </form>
+  </section>
+
+  <section class="scheda">
+    <h2>Indirizzi</h2>
+    <form id="fIndirizzi" autocomplete="off">
+      <label>IP della placca <small>(sulla tua rete, es. 192.168.1.90)</small>
+        <input name="placca" inputmode="decimal" placeholder="192.168.1.90"></label>
+      <label>Web del monitor <small>(facoltativo, con https://)</small>
+        <input name="monitor" placeholder="https://192.168.1.80"></label>
+      <div class="riga"><button>Salva</button></div>
+      <p class="err" id="eIndirizzi"></p>
+    </form>
+  </section>
+
+  <section class="scheda">
+    <h2>Password del pannello</h2>
+    <form id="fCred" autocomplete="off">
+      <label>Nuovo utente <small>(lettere e cifre)</small><input name="utente" autocomplete="username"></label>
+      <label>Nuova password <small>(almeno 12 caratteri)</small>
+        <input name="password" type="password" autocomplete="new-password"></label>
+      <label>Ripeti password<input name="ripeti" type="password" autocomplete="new-password"></label>
+      <div class="riga"><button>Cambia</button></div>
+      <p class="err" id="eCred"></p>
+    </form>
+  </section>
+
+  <section class="scheda">
+    <h2>Password della placca</h2>
+    <form class="fDev" data-dev="placca" autocomplete="off">
+      <label>Password attuale<input name="attuale" type="password"></label>
+      <label>Nuova password <small>(6-16 lettere o cifre)</small><input name="nuova" type="password"></label>
+      <label>Ripeti<input name="ripeti" type="password"></label>
+      <div class="riga"><button class="sec">Cambia password placca</button></div>
+      <p class="err"></p>
+    </form>
+  </section>
+
+  <section class="scheda">
+    <h2>Password del monitor <small class="nota">(facoltativo)</small></h2>
+    <form class="fDev" data-dev="monitor" autocomplete="off">
+      <label>Password attuale<input name="attuale" type="password"></label>
+      <label>Nuova password <small>(6-10 lettere o cifre)</small><input name="nuova" type="password"></label>
+      <label>Ripeti<input name="ripeti" type="password"></label>
+      <div class="riga"><button class="sec">Cambia password monitor</button></div>
+      <p class="err"></p>
+    </form>
+  </section>
+
+  <section class="scheda">
+    <h2>Aggiornamento</h2>
+    <p class="nota">Scarica l'ultima versione dal repository e riavvia. Il Pi lo fa anche da solo ogni notte.</p>
+    <div class="riga"><button id="bAgg" class="sec">Aggiorna adesso</button></div>
+    <pre id="aggOut" class="nascosto"></pre>
+  </section>
+
+  <section class="scheda">
+    <div class="riga">
+      <a href="/data/pin/"><button class="ghost" type="button">Vai alla pagina dei PIN</button></a>
+      <button id="bLogout" class="ghost" type="button">Esci</button>
+    </div>
+  </section>
+</div>
+
+<div id="avviso" class="avviso" role="status"></div>
+
+<script>
+'use strict';
+(function(){
+  const $=s=>document.querySelector(s);
+  const CGI='/data/pin/api.cgi';          // assoluto: la pagina puo' stare su /admin o /data/pin/admin.html
+  let placcaSid='';
+
+  function avviso(t,cls){ const a=$('#avviso'); a.textContent=t; a.className='avviso vedi'+(cls?' '+cls:'');
+    clearTimeout(avviso.t); avviso.t=setTimeout(()=>a.className='avviso',2200); }
+
+  async function invia(campi){
+    let r;
+    try{ r=await fetch(CGI,{method:'POST',body:new URLSearchParams(campi),cache:'no-store'});}
+    catch(e){ throw new Error('Connessione non riuscita'); }
+    const t=await r.text();
+    if(!r.ok){ throw new Error(t.trim().slice(0,200)||('Errore '+r.status)); }
+    return t;
+  }
+  const json=t=>{ try{return JSON.parse(t);}catch(e){throw new Error('Risposta inattesa');} };
+  function esito(j){ const v=j&&j.data&&j.data.result!==undefined?j.data.result:(j?j.result:undefined);
+    const n=parseInt(v,10); return isNaN(n)?0:n; }
+
+  // md5 per il login sulla placca (la placca vuole md5 della password)
+  function md5(s){const b=new TextEncoder().encode(s),n=b.length,bl=((n+8)>>>6)+1,w=new Uint32Array(bl*16);
+    for(let i=0;i<n;i++)w[i>>2]|=b[i]<<((i&3)*8); w[n>>2]|=0x80<<((n&3)*8);
+    w[bl*16-2]=(n*8)>>>0; w[bl*16-1]=Math.floor(n/0x20000000);
+    const R=[7,12,17,22,5,9,14,20,4,11,16,23,6,10,15,21],K=new Uint32Array(64);
+    for(let i=0;i<64;i++)K[i]=Math.floor(Math.abs(Math.sin(i+1))*4294967296);
+    let a=0x67452301,bb=0xefcdab89,c=0x98badcfe,d=0x10325476;
+    for(let o=0;o<w.length;o+=16){let A=a,B=bb,C=c,D=d;
+      for(let i=0;i<64;i++){let F,g;
+        if(i<16){F=(B&C)|(~B&D);g=i;}else if(i<32){F=(D&B)|(~D&C);g=(5*i+1)&15;}
+        else if(i<48){F=B^C^D;g=(3*i+5)&15;}else{F=C^(B|~D);g=(7*i)&15;}
+        const s2=R[(i>>4)*4+(i&3)],x=(A+F+K[i]+w[o+g])|0; A=D;D=C;C=B;
+        B=(B+((x<<s2)|(x>>>(32-s2))))|0;}
+      a=(a+A)|0;bb=(bb+B)|0;c=(c+C)|0;d=(d+D)|0;}
+    let h='';for(const v of[a,bb,c,d])for(let i=0;i<4;i++)h+=((v>>>(i*8))&255).toString(16).padStart(2,'0');return h;}
+
+  // ---------- login pannello ----------
+  async function entra(ev){
+    ev.preventDefault();
+    const f=ev.currentTarget;
+    $('#eLogin').textContent='';
+    try{ await invia({op:'admin_login',admin_user:f.utente.value,admin_pass:f.password.value}); }
+    catch(e){ $('#eLogin').textContent=e.message; return; }
+    f.reset(); mostraPannello();
+  }
+  async function mostraPannello(){
+    $('#vLogin').classList.add('nascosto');
+    $('#vPanel').classList.remove('nascosto');
+    await caricaStato();
+  }
+
+  // ---------- stato ----------
+  const mb=kb=>Math.round(Number(kb)/1024)+' MB';
+  async function caricaStato(){
+    let s;
+    try{ s=json(await invia({op:'admin_state'})); }
+    catch(e){ if(/admin/i.test(e.message)){ scaduto(); return;} avviso(e.message,'err'); return; }
+    $('#fIndirizzi').placca.value=s.placca||'';
+    $('#fIndirizzi').monitor.value=s.monitor||'';
+    disegnaTunnel(s.tunnel||{});
+  }
+  function disegnaTunnel(t){
+    const info=[]; let testo='fermo',cls='off';
+    if(!t.installato){ testo='non installato'; info.push('cloudflared non è installato sul Pi'); }
+    else if(!t.token){ testo='senza token'; info.push('incolla qui sotto il token del tunnel'); }
+    else if(t.attivo){ testo='attivo'; cls='on'; if(t.ram)info.push('usa '+mb(t.ram)+' di RAM'); }
+    else testo='fermo';
+    info.push(t.automatico? 'si riavvia da solo (servizio attivo al boot)' : 'avvio automatico disattivato');
+    if(t.versione)info.push('cloudflared '+t.versione);
+    if(t.libera)info.push('RAM libera '+mb(t.libera));
+    $('#tStato').textContent=testo; $('#tStato').className='stato '+cls;
+    $('#tInfo').textContent=info.join(' · ');
+    $('#tAvvia').disabled=!(t.installato&&t.token&&!t.attivo);
+    $('#tFerma').disabled=!t.attivo;
+  }
+  async function tunnel(azione,extra){
+    const t=await invia(Object.assign({op:'tunnel',azione:azione},extra||{}));
+    const s={}; t.split('\n').forEach(r=>{const i=r.indexOf('='); if(i>0)s[r.slice(0,i)]=r.slice(i+1).trim();});
+    // normalizza i numeri come nello stato JSON
+    ['installato','token','attivo','automatico'].forEach(k=>s[k]=Number(s[k]));
+    disegnaTunnel(s);
+  }
+  function scaduto(){ $('#vPanel').classList.add('nascosto'); $('#vLogin').classList.remove('nascosto');
+    $('#eLogin').textContent='Sessione scaduta: rientra.'; }
+
+  function proteggi(fn){ return async(...a)=>{ try{ return await fn(...a);}catch(e){
+    if(/admin/i.test(e.message)) scaduto(); else avviso(e.message,'err'); } }; }
+
+  // ---------- azioni ----------
+  $('#fLogin').addEventListener('submit',entra);
+  $('#tAvvia').addEventListener('click',proteggi(async()=>{ await tunnel('avvia'); avviso('Tunnel avviato','ok'); }));
+  $('#tFerma').addEventListener('click',proteggi(async()=>{
+    if(!confirm('Fermare il tunnel? Da fuori casa la pagina non sarà più raggiungibile.'))return;
+    await tunnel('ferma'); avviso('Tunnel fermato','ok'); }));
+  $('#tAgg').addEventListener('click',proteggi(caricaStato));
+  $('#fToken').addEventListener('submit',proteggi(async ev=>{ ev.preventDefault();
+    const tok=ev.currentTarget.token.value.trim();
+    if(!/^eyJ[A-Za-z0-9+/=_-]{97,}$/.test(tok)){ $('#eToken').textContent='Incolla tutta la stringa: inizia con eyJ'; return; }
+    $('#eToken').textContent=''; await tunnel('token',{token:tok}); ev.currentTarget.reset(); avviso('Token salvato','ok'); }));
+
+  $('#fIndirizzi').addEventListener('submit',proteggi(async ev=>{ ev.preventDefault();
+    const f=ev.currentTarget; $('#eIndirizzi').textContent='';
+    await invia({op:'admin_save',placca:f.placca.value.trim(),monitor:f.monitor.value.trim()});
+    avviso('Indirizzi salvati','ok'); }));
+
+  $('#fCred').addEventListener('submit',proteggi(async ev=>{ ev.preventDefault();
+    const f=ev.currentTarget,err=$('#eCred');
+    if(!/^[0-9A-Za-z]{1,32}$/.test(f.utente.value)){ err.textContent='Utente: lettere e cifre'; return; }
+    if(f.password.value.length<12){ err.textContent='La password deve avere almeno 12 caratteri'; return; }
+    if(f.password.value!==f.ripeti.value){ err.textContent='Le due password non coincidono'; return; }
+    err.textContent='';
+    await invia({op:'admin_cred',nuovo_user:f.utente.value,nuova_pass:f.password.value});
+    f.reset(); avviso('Credenziali del pannello aggiornate','ok'); }));
+
+  // password placca (login sulla placca + cambio) e monitor (dal server)
+  async function cambiaPlacca(att,nuova){
+    const j=json(await invia({op:'login',user:'admin',hash:md5(att)}));
+    const sid=j&&j.data&&j.data.SessionID; if(!sid) throw new Error('Password attuale non corretta');
+    placcaSid=String(sid);
+    const r=json(await invia({op:'api',api:'password',sid:placcaSid,chi:'web',old_password:att,new_password:nuova}));
+    if(esito(r)<0) throw new Error('Password attuale non corretta');
+  }
+  async function cambiaMonitor(att,nuova){
+    const r=json(await invia({op:'monitor',old_password:att,new_password:nuova}));
+    if(esito(r)<0) throw new Error('Password attuale non corretta');
+  }
+  const REGOLE={placca:[/^[0-9A-Za-z]{6,16}$/,'6-16 lettere o cifre'],monitor:[/^[0-9A-Za-z]{6,10}$/,'6-10 lettere o cifre']};
+  document.querySelectorAll('.fDev').forEach(f=>f.addEventListener('submit',proteggi(async ev=>{
+    ev.preventDefault(); const dev=f.dataset.dev,err=f.querySelector('.err'),reg=REGOLE[dev];
+    if(!f.attuale.value){ err.textContent='Scrivi la password attuale'; return; }
+    if(!reg[0].test(f.nuova.value)){ err.textContent='La nuova password: '+reg[1]; return; }
+    if(f.nuova.value!==f.ripeti.value){ err.textContent='Le due nuove non coincidono'; return; }
+    err.textContent='';
+    await (dev==='placca'?cambiaPlacca:cambiaMonitor)(f.attuale.value,f.nuova.value);
+    f.reset(); avviso('Password '+dev+' cambiata','ok'); })));
+
+  $('#bAgg').addEventListener('click',proteggi(async()=>{
+    if(!confirm('Scaricare l\'ultima versione e riavviare?'))return;
+    const out=$('#aggOut'); out.classList.remove('nascosto'); out.textContent='Aggiornamento in corso…';
+    let t; try{ t=await invia({op:'admin_update'}); }catch(e){ out.textContent=e.message; return; }
+    out.textContent=t.trim()+'\n\nRiavvio in corso: tra qualche secondo ricarica la pagina.'; }));
+
+  $('#bLogout').addEventListener('click',proteggi(async()=>{ await invia({op:'admin_logout'}); scaduto(); }));
+
+  // all'avvio: provo a caricare lo stato; se la sessione c'è gia', salto il login
+  invia({op:'admin_state'}).then(()=>mostraPannello()).catch(()=>{});
+})();
+</script>
+</body>
+</html>

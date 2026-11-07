@@ -1,0 +1,1021 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; form-action 'none'; base-uri 'none'">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Citofono">
+<title>Citofono PIN</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231d5fd1'/%3E%3Cg fill='%23fff'%3E%3Ccircle cx='20' cy='20' r='5'/%3E%3Ccircle cx='32' cy='20' r='5'/%3E%3Ccircle cx='44' cy='20' r='5'/%3E%3Ccircle cx='20' cy='32' r='5'/%3E%3Ccircle cx='32' cy='32' r='5'/%3E%3Ccircle cx='44' cy='32' r='5'/%3E%3Ccircle cx='20' cy='44' r='5'/%3E%3Ccircle cx='32' cy='44' r='5'/%3E%3Ccircle cx='44' cy='44' r='5'/%3E%3C/g%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #f3f5f8; --card: #ffffff; --text: #111827; --muted: #5d6877; --line: #e1e6ed;
+  --accent: #1d5fd1; --on-accent: #ffffff; --accent-soft: #e7effc;
+  --ok: #15703f; --ok-soft: #e1f3e8; --wait: #95560a; --wait-soft: #fcf0da;
+  --danger: #b8322a; --danger-soft: #fbe6e4; --off: #5f6874; --off-soft: #eceff3;
+  --shadow: 0 1px 2px rgb(15 23 42 / .05), 0 6px 18px rgb(15 23 42 / .05);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0c1117; --card: #151c25; --text: #e6ecf3; --muted: #9ba7b5; --line: #263140;
+    --accent: #5c94ff; --on-accent: #08111f; --accent-soft: #1a2741;
+    --ok: #57d391; --ok-soft: #12301f; --wait: #f2b45f; --wait-soft: #33260f;
+    --danger: #ff7d71; --danger-soft: #3a1a17; --off: #9ca5b0; --off-soft: #212a35;
+    --shadow: none;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+[hidden] { display: none !important; }
+h1, h2 { margin: 0; line-height: 1.25; }
+h1 { font-size: 18px; }
+h2 { font-size: 17px; }
+
+.barra { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px;
+  padding: 12px 16px; padding-top: max(12px, env(safe-area-inset-top));
+  background: var(--card); border-bottom: 1px solid var(--line); }
+.barra .titolo { flex: 1; min-width: 0; }
+.barra .sotto { margin: 2px 0 0; font-size: 13px; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.giro { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--line);
+  border-top-color: var(--accent); visibility: hidden; animation: gira .8s linear infinite; }
+body.occupato .giro { visibility: visible; }
+@keyframes gira { to { transform: rotate(360deg); } }
+
+main { max-width: 640px; margin: 0 auto; padding: 16px 16px 40px; }
+.scheda { background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: var(--shadow); padding: 16px; margin-bottom: 16px; }
+.testa { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+.nota { color: var(--muted); font-size: 14px; margin: 6px 0 0; }
+.centro { text-align: center; }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 42px; padding: 8px 14px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--card); color: var(--text); font: inherit; font-weight: 600;
+  text-decoration: none; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.btn:hover { border-color: var(--muted); }
+.btn:focus-visible, .link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn.primario { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn.pericolo { color: var(--danger); }
+.btn.piccolo { min-height: 36px; padding: 6px 12px; font-size: 14px; }
+.btn.largo { width: 100%; }
+.btn.grande { min-height: 54px; font-size: 17px; margin-bottom: 16px; }
+body.occupato .btn { pointer-events: none; opacity: .6; }
+.btn:disabled { opacity: .45; pointer-events: none; }
+h3 { font-size: 15px; margin: 20px 0 0; }
+.schede { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin-bottom: 16px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+.scheda-btn { min-height: 40px; border: 0; border-radius: 9px; background: none; color: var(--muted);
+  font: inherit; font-weight: 700; cursor: pointer; }
+.scheda-btn[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.scheda-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.fPassword + .fPassword { border-top: 1px solid var(--line); margin-top: 18px; }
+.link { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; }
+
+label { display: block; margin-top: 14px; font-size: 14px; color: var(--muted); }
+input[type=text], input[type=password], input[type=number], input[type=date],
+input[type=time], input:not([type]) {
+  display: block; width: 100%; margin-top: 6px; min-height: 44px; padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--bg);
+  color: var(--text); font: inherit; font-size: 16px; }
+input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.spunta { display: flex; align-items: center; gap: 10px; color: var(--text); font-size: 15px; }
+.spunta input { width: 20px; height: 20px; margin: 0; accent-color: var(--accent); }
+.errore { color: var(--danger); font-weight: 600; min-height: 1.2em; margin: 12px 0 0; font-size: 14px; }
+
+fieldset { border: 0; padding: 0; margin: 16px 0 0; min-width: 0; }
+legend { padding: 0; font-size: 14px; color: var(--muted); margin-bottom: 8px; }
+.scelte { display: flex; flex-wrap: wrap; gap: 8px; }
+.scelta { position: relative; margin: 0; }
+.scelta input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.scelta span { display: grid; place-items: center; min-width: 44px; height: 44px; padding: 0 14px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--bg);
+  color: var(--text); font-weight: 600; cursor: pointer; }
+.scelta.tonda span { min-width: 38px; width: 38px; height: 38px; padding: 0; border-radius: 50%; }
+#giorni { gap: 6px; }
+.scelta input:checked + span { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.scelta input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.due { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.riga-pin { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end; }
+.preset { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+
+.elenco { list-style: none; margin: 8px 0 0; padding: 0; }
+.voce { padding: 14px 0; border-top: 1px solid var(--line); }
+.voce:first-child { border-top: 0; }
+.riga { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.nome { font-size: 16px; overflow-wrap: anywhere; }
+.dettagli { color: var(--muted); font-size: 14px; margin-top: 3px; }
+.codice { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 700;
+  color: var(--text); letter-spacing: .06em; }
+.azioni { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.vuoto { color: var(--muted); padding: 10px 0; }
+.stato { flex: none; font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+.stato.acceso { background: var(--ok-soft); color: var(--ok); }
+.stato.attesa { background: var(--wait-soft); color: var(--wait); }
+.stato.spento { background: var(--off-soft); color: var(--off); }
+.stato.allarme { background: var(--danger-soft); color: var(--danger); }
+
+dialog { width: min(560px, calc(100% - 16px)); max-height: calc(100% - 16px); padding: 0;
+  border: 0; border-radius: 16px; background: var(--card); color: var(--text);
+  box-shadow: 0 12px 40px rgb(0 0 0 / .3); }
+dialog::backdrop { background: rgb(0 0 0 / .45); }
+dialog form, dialog .corpo { padding: 18px; }
+.bottoni { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
+.bottoni.tre { display: grid; grid-template-columns: repeat(3, 1fr); }
+.grande-codice { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 40px; font-weight: 800; letter-spacing: .12em; text-align: center; margin: 14px 0 6px; }
+textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; border: 1px solid var(--line);
+  border-radius: 10px; background: var(--bg); color: var(--text); font: inherit; font-size: 15px; resize: none; }
+@media (max-width: 600px) {
+  dialog { margin: auto auto 8px; }
+}
+
+.avviso { position: fixed; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); z-index: 20;
+  max-width: calc(100% - 32px); padding: 12px 16px; border-radius: 12px; border-left: 6px solid var(--muted);
+  background: var(--text); color: var(--bg); font-weight: 600; box-shadow: 0 8px 24px rgb(0 0 0 / .25);
+  opacity: 0; transform: translate(-50%, 16px); transition: opacity .2s, transform .2s; pointer-events: none; }
+.avviso.visibile { opacity: 1; transform: translate(-50%, 0); }
+.avviso.ok { border-left-color: var(--ok); }
+.avviso.err { border-left-color: var(--danger); }
+</style>
+</head>
+<body>
+<header class="barra">
+  <div class="titolo">
+    <h1>Citofono · PIN</h1>
+    <p class="sotto" id="dove"></p>
+  </div>
+  <span class="giro" aria-hidden="true"></span>
+  <button id="bEsci" class="btn piccolo" type="button" hidden>Esci</button>
+</header>
+
+<main>
+  <section id="vAccesso" class="scheda" hidden>
+    <h2>Accesso alla placca</h2>
+    <form id="fAccesso">
+      <label>Utente<input name="user" value="admin" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
+      <label>Password del web della placca<input name="pass" type="password" autocomplete="current-password" required></label>
+      <label class="spunta"><input type="checkbox" name="ricorda" checked> Ricorda su questo dispositivo</label>
+      <p class="errore" id="eAccesso" role="alert"></p>
+      <button class="btn primario largo">Entra</button>
+    </form>
+    <p class="nota">La password non resta salvata in chiaro: il browser conserva solo la sua impronta (md5), cioè quello che chiede la placca. "Esci" la cancella.</p>
+  </section>
+
+  <section id="vApp" hidden>
+    <nav class="schede" aria-label="Sezioni">
+      <button type="button" class="scheda-btn" data-pagina="pCodici" aria-pressed="true">Codici</button>
+      <button type="button" class="scheda-btn" data-pagina="pImpostazioni" aria-pressed="false">Impostazioni</button>
+    </nav>
+    <div id="pCodici">
+    <button id="bNuovo" class="btn primario largo grande" type="button">+ Nuovo codice ospite</button>
+
+    <section class="scheda">
+      <div class="testa">
+        <h2 id="tPersone">Codici personali e temporanei</h2>
+        <button id="bMostra" class="btn piccolo" type="button" aria-pressed="false">Mostra codici</button>
+      </div>
+      <ul id="lPersone" class="elenco"></ul>
+    </section>
+
+    <section class="scheda">
+      <div class="testa">
+        <h2>PIN fissi</h2>
+        <button id="bNuovoFisso" class="btn piccolo" type="button">+ Aggiungi</button>
+      </div>
+      <p class="nota">Aprono sempre, senza scadenza: chi li conosce entra quando vuole.</p>
+      <ul id="lFissi" class="elenco"></ul>
+    </section>
+
+    <p class="nota centro">Date e orari seguono l'orologio della placca: controlla che sia giusto.
+      <button id="bAggiorna" class="link" type="button">Aggiorna</button></p>
+    </div>
+
+    <div id="pImpostazioni" hidden>
+      <section class="scheda">
+        <div class="testa">
+          <h2>Accesso da fuori (tunnel)</h2>
+          <span id="tStato" class="stato spento">…</span>
+        </div>
+        <p class="dettagli" id="tDettagli"></p>
+        <div class="azioni">
+          <button id="tAvvia" class="btn piccolo primario" type="button">Avvia</button>
+          <button id="tFerma" class="btn piccolo pericolo" type="button">Ferma</button>
+          <button id="tAggiorna" class="btn piccolo" type="button">Aggiorna stato</button>
+        </div>
+        <p class="nota">Dopo un blackout lo riaccende la placca entro 5 minuti (riavvio automatico,
+          vedi TUNNEL-SUL-MONITOR.md). Se lo fermi da qui resta fermo finché non premi Avvia.
+          Nomi e percorsi si cambiano su Cloudflare (Zero Trust → Networks → Tunnels).
+          Da fuori la pagina è protetta solo dalla password della placca: tienila lunga.</p>
+        <form id="fToken" novalidate>
+          <label>Nuovo token del tunnel<input name="token" type="password" autocomplete="off" spellcheck="false" placeholder="eyJ…"></label>
+          <p class="errore" id="eToken" role="alert"></p>
+          <button class="btn piccolo">Salva token</button>
+        </form>
+      </section>
+
+      <section class="scheda">
+        <h2>Password</h2>
+        <p class="nota">La password di accesso (utente admin) di ciascun dispositivo.</p>
+        <form class="fPassword" data-dev="placca" novalidate>
+          <h3>Placca</h3>
+          <label>Password attuale<input name="attuale" type="password" autocomplete="current-password"></label>
+          <label>Nuova password <small>(6-16 lettere o cifre)</small><input name="nuova" type="password" autocomplete="new-password"></label>
+          <label>Ripeti la nuova<input name="ripeti" type="password" autocomplete="new-password"></label>
+          <p class="errore" role="alert"></p>
+          <button class="btn piccolo">Cambia password della placca</button>
+        </form>
+        <form class="fPassword" data-dev="monitor" novalidate>
+          <h3>Monitor</h3>
+          <label>Password attuale<input name="attuale" type="password" autocomplete="off"></label>
+          <label>Nuova password <small>(6-10 lettere o cifre)</small><input name="nuova" type="password" autocomplete="off"></label>
+          <label>Ripeti la nuova<input name="ripeti" type="password" autocomplete="off"></label>
+          <p class="errore" role="alert"></p>
+          <button class="btn piccolo">Cambia password del monitor</button>
+        </form>
+        <p class="nota">Quella del monitor si cambia da casa: dall'esterno il tunnel apre solo questa pagina.</p>
+      </section>
+    </div>
+  </section>
+</main>
+
+<dialog id="dPersona" aria-labelledby="tPersona">
+  <form id="fPersona" novalidate>
+    <h2 id="tPersona">Nuovo codice ospite</h2>
+    <label>Nome<input name="nome" maxlength="26" autocomplete="off" placeholder="es. Idraulico, Babysitter"></label>
+    <div class="riga-pin">
+      <label>Codice (4-8 cifre)<input name="pin" inputmode="numeric" maxlength="8" autocomplete="off"></label>
+      <button id="bGenera" class="btn" type="button">Genera</button>
+    </div>
+    <p class="nota" id="nPin" hidden></p>
+    <fieldset>
+      <legend>Apre il relè</legend>
+      <div class="scelte">
+        <label class="scelta"><input type="checkbox" name="rele" value="0"><span>1</span></label>
+        <label class="scelta"><input type="checkbox" name="rele" value="1"><span>2</span></label>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Validità</legend>
+      <div class="scelte">
+        <label class="scelta"><input type="radio" name="tipo" value="temp"><span>Temporaneo</span></label>
+        <label class="scelta"><input type="radio" name="tipo" value="sempre"><span>Sempre</span></label>
+      </div>
+    </fieldset>
+    <div id="boxTemp">
+      <div class="preset">
+        <button type="button" class="btn piccolo" data-giorni="1">Oggi</button>
+        <button type="button" class="btn piccolo" data-giorni="3">3 giorni</button>
+        <button type="button" class="btn piccolo" data-giorni="7">1 settimana</button>
+        <button type="button" class="btn piccolo" data-giorni="30">1 mese</button>
+      </div>
+      <div class="due">
+        <label>Dal<input type="date" name="dal"></label>
+        <label>Al<input type="date" name="al"></label>
+      </div>
+      <div class="due">
+        <label>Dalle<input type="time" name="dalle"></label>
+        <label>Alle<input type="time" name="alle"></label>
+      </div>
+      <fieldset>
+        <legend>Giorni</legend>
+        <div class="scelte" id="giorni"></div>
+      </fieldset>
+    </div>
+    <label class="spunta"><input type="checkbox" name="limita"> Limita il numero di aperture</label>
+    <label id="boxUsi">Aperture consentite<input type="number" name="usi" min="1" max="10000" step="1" inputmode="numeric"></label>
+    <label class="spunta" id="boxAttivo"><input type="checkbox" name="attivo"> Codice attivo</label>
+    <p class="errore" id="ePersona" role="alert"></p>
+    <div class="bottoni">
+      <button type="button" class="btn" data-chiudi>Annulla</button>
+      <button class="btn primario">Salva</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dFisso" aria-labelledby="tFisso">
+  <form id="fFisso" novalidate>
+    <h2 id="tFisso">Nuovo PIN fisso</h2>
+    <label>PIN (4-8 cifre)<input name="pin" inputmode="numeric" maxlength="8" autocomplete="off"></label>
+    <p class="nota" id="nFisso" hidden></p>
+    <fieldset>
+      <legend>Apre il relè</legend>
+      <div class="scelte">
+        <label class="scelta"><input type="checkbox" name="rele" value="0"><span>1</span></label>
+        <label class="scelta"><input type="checkbox" name="rele" value="1"><span>2</span></label>
+      </div>
+    </fieldset>
+    <p class="errore" id="eFisso" role="alert"></p>
+    <div class="bottoni">
+      <button type="button" class="btn" data-chiudi>Annulla</button>
+      <button class="btn primario">Salva</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dCondividi" aria-labelledby="tCondividi">
+  <div class="corpo">
+    <h2 id="tCondividi">Codice pronto</h2>
+    <p class="grande-codice" id="cCodice"></p>
+    <textarea id="cTesto" rows="5" readonly></textarea>
+    <div class="bottoni tre">
+      <button type="button" class="btn" id="bCopia">Copia</button>
+      <a class="btn" id="bWhatsapp" target="_blank" rel="noopener noreferrer">WhatsApp</a>
+      <button type="button" class="btn primario" id="bCondividi">Condividi</button>
+    </div>
+    <div class="bottoni"><button type="button" class="btn largo" data-chiudi>Chiudi</button></div>
+  </div>
+</dialog>
+
+<div id="avviso" class="avviso" role="status" aria-live="polite"></div>
+
+<script>
+'use strict';
+(function () {
+  const $ = (s) => document.querySelector(s);
+  const CGI = 'api.cgi';                 // lo script accanto a questa pagina
+  const CHIAVE = 'citofono-pin';
+  // colonne di users.xml, una riga per persona (verificate sulla placca)
+  const COL = ['nome', 'gruppo', 'stanza', 'tipo', 'stato', 'rele', 'tessere', 'pin_mode', 'pin',
+    'pass_on', 'usi', 'valid_on', 'dal', 'al', 'dalle', 'alle', 'settimana'];
+  // campo "week": 7 valori, indice 0 = domenica (come la web app della placca); in pagina da lunedi'
+  const GIORNI = [[1, 'L', 'lunedì'], [2, 'M', 'martedì'], [3, 'M', 'mercoledì'], [4, 'G', 'giovedì'],
+    [5, 'V', 'venerdì'], [6, 'S', 'sabato'], [0, 'D', 'domenica']];
+  const BREVI = ['dom', 'lun', 'mar', 'mer', 'gio', 'ven', 'sab'];
+  const S = { user: 'admin', hash: '', sid: '', persone: [], fissi: [], mostra: false, persona: null, fisso: null };
+
+  // ---------- md5 (la placca vuole md5 della password; il browser non lo offre) ----------
+  function md5(testo) {
+    const b = new TextEncoder().encode(testo), n = b.length;
+    const blocchi = ((n + 8) >>> 6) + 1, w = new Uint32Array(blocchi * 16);
+    for (let i = 0; i < n; i++) w[i >> 2] |= b[i] << ((i & 3) * 8);
+    w[n >> 2] |= 0x80 << ((n & 3) * 8);
+    w[blocchi * 16 - 2] = (n * 8) >>> 0;
+    w[blocchi * 16 - 1] = Math.floor(n / 0x20000000);
+    const R = [7, 12, 17, 22, 5, 9, 14, 20, 4, 11, 16, 23, 6, 10, 15, 21], K = new Uint32Array(64);
+    for (let i = 0; i < 64; i++) K[i] = Math.floor(Math.abs(Math.sin(i + 1)) * 4294967296);
+    let a0 = 0x67452301, b0 = 0xefcdab89, c0 = 0x98badcfe, d0 = 0x10325476;
+    for (let o = 0; o < w.length; o += 16) {
+      let A = a0, B = b0, C = c0, D = d0;
+      for (let i = 0; i < 64; i++) {
+        let F, g;
+        if (i < 16) { F = (B & C) | (~B & D); g = i; }
+        else if (i < 32) { F = (D & B) | (~D & C); g = (5 * i + 1) & 15; }
+        else if (i < 48) { F = B ^ C ^ D; g = (3 * i + 5) & 15; }
+        else { F = C ^ (B | ~D); g = (7 * i) & 15; }
+        const s = R[(i >> 4) * 4 + (i & 3)], x = (A + F + K[i] + w[o + g]) | 0;
+        A = D; D = C; C = B;
+        B = (B + ((x << s) | (x >>> (32 - s)))) | 0;
+      }
+      a0 = (a0 + A) | 0; b0 = (b0 + B) | 0; c0 = (c0 + C) | 0; d0 = (d0 + D) | 0;
+    }
+    let h = '';
+    for (const v of [a0, b0, c0, d0]) for (let i = 0; i < 4; i++) h += ((v >>> (i * 8)) & 255).toString(16).padStart(2, '0');
+    return h;
+  }
+
+  // ---------- memoria del browser (puo' mancare: navigazione privata) ----------
+  function archivio(nome) { try { return window[nome] || null; } catch (e) { return null; } }
+  function leggiCredenziali() {
+    for (const nome of ['sessionStorage', 'localStorage']) {
+      try {
+        const v = JSON.parse(archivio(nome).getItem(CHIAVE) || 'null');
+        if (v && v.user && /^[0-9a-f]{32}$/.test(v.hash)) return v;
+      } catch (e) { /* niente di salvato */ }
+    }
+    return null;
+  }
+  function salvaCredenziali(ricorda) {
+    const v = JSON.stringify({ user: S.user, hash: S.hash });
+    try { archivio(ricorda ? 'localStorage' : 'sessionStorage').setItem(CHIAVE, v); } catch (e) { /* non salvabile */ }
+    try { archivio(ricorda ? 'sessionStorage' : 'localStorage').removeItem(CHIAVE); } catch (e) { /* idem */ }
+  }
+  function dimenticaCredenziali() {
+    for (const nome of ['sessionStorage', 'localStorage']) { try { archivio(nome).removeItem(CHIAVE); } catch (e) { /* idem */ } }
+  }
+
+  // ---------- rete: tutto passa da api.cgi ----------
+  class ErroreAccesso extends Error {}
+  async function invia(campi) {
+    let r;
+    try { r = await fetch(CGI, { method: 'POST', body: new URLSearchParams(campi), cache: 'no-store' }); }
+    catch (e) { throw new Error('Connessione non riuscita: controlla la rete e ricarica la pagina'); }
+    const t = await r.text();
+    const msg = /^\s*</.test(t) ? '' : t.trim().slice(0, 200);
+    if (r.status === 401) throw new ErroreAccesso(msg || 'Accesso scaduto');
+    if (!r.ok) { const e = new Error(msg || 'Errore ' + r.status); e.stato = r.status; throw e; }
+    return t;
+  }
+  function json(t) { try { return JSON.parse(t); } catch (e) { throw new Error('Risposta inattesa dalla placca'); } }
+
+  async function accedi() {
+    let t;
+    try { t = await invia({ op: 'login', user: S.user, hash: S.hash }); }
+    catch (e) { if (e instanceof ErroreAccesso) throw new Error('Utente o password non corretti'); throw e; }
+    const j = json(t), sid = j && j.data && j.data.SessionID;
+    if (!sid) throw new Error('Utente o password non corretti');
+    S.sid = String(sid);
+  }
+  async function conSessione(campi) {      // se la sessione e' scaduta rientra una volta e riprova
+    for (let giro = 0; ; giro++) {
+      if (!S.sid) await accedi();
+      try { return await invia(Object.assign({}, campi, { sid: S.sid })); }
+      catch (e) { if (!(e instanceof ErroreAccesso) || giro > 0) throw e; S.sid = ''; }
+    }
+  }
+  const chiama = async (api, campi) => json(await conSessione(Object.assign({ op: 'api', api: api }, campi)));
+  function esito(j) {
+    const v = j && j.data && j.data.result !== undefined ? j.data.result : (j ? j.result : undefined);
+    const n = parseInt(v, 10);
+    return isNaN(n) ? 0 : n;
+  }
+  const pausa = (ms) => new Promise((fatto) => setTimeout(fatto, ms));
+  // come la web app: se la placca risponde 100 ("in corso") si richiede action=3 finche' non ha finito
+  async function scrivi(api, campi) {
+    let j = await chiama(api, campi);
+    for (let i = 0; i < 60 && esito(j) === 100; i++) { await pausa(500); j = await chiama(api, { action: '3' }); }
+    const n = esito(j);
+    if (n === 100) throw new Error('La placca non ha confermato in tempo: aggiorna e controlla');
+    if (n < 0) {
+      throw new Error({ '-1': "La placca ha rifiutato l'operazione", '-2': 'Impossibile salvare: elenco pieno o dati non validi',
+        '-3': 'Date o orari non validi' }[n] || 'Errore della placca (' + n + ')');
+    }
+  }
+
+  async function caricaPersone() {
+    await chiama('user');                   // la placca rigenera users.xml
+    let t = '';
+    try { t = await conSessione({ op: 'elenco' }); } catch (e) { if (e.stato !== 404) throw e; }
+    S.persone = t.split(/\r?\n/).filter((r) => r.trim()).map((r, i) => {
+      const c = r.split(','), p = { index: i };
+      COL.forEach((k, n) => { p[k] = (c[n] || '').trim(); });
+      return p;
+    });
+  }
+  async function caricaFissi() {
+    const j = await chiama('unlock_passwd');
+    const d = j.max !== undefined ? j : (j.data || {});
+    const max = parseInt(d.max, 10) || 0;
+    S.fissi = [];
+    for (let i = 0; i < max; i++) S.fissi.push({ index: i, pin: String(d['p_' + i + '_password'] || ''), rele: String(d['p_' + i + '_relays'] || '') });
+  }
+  async function caricaTutto() { await caricaPersone(); await caricaFissi(); disegna(); }
+
+  // prima di modificare/cancellare: la riga e' ancora quella? (qualcun altro puo' aver cambiato l'elenco)
+  async function controllaPersona(p) {
+    await caricaPersone();
+    const q = S.persone[p.index];
+    if (!q || q.nome !== p.nome || q.pin !== p.pin) { disegna(); throw new Error("L'elenco è cambiato nel frattempo: controlla e riprova"); }
+  }
+  async function controllaFisso(f) {
+    await caricaFissi();
+    const q = S.fissi[f.index];
+    if (!q || q.pin !== f.pin) { disegna(); throw new Error("L'elenco è cambiato nel frattempo: controlla e riprova"); }
+  }
+
+  // ---------- attese e avvisi ----------
+  let lavori = 0, timerAvviso = 0;
+  async function occupato(fn) {
+    lavori++; document.body.classList.add('occupato');
+    try { return await fn(); } finally { if (--lavori === 0) document.body.classList.remove('occupato'); }
+  }
+  async function prova(fn, ok) {
+    try { await occupato(fn); if (ok) avviso(ok, 'ok'); return true; } catch (e) { avviso(e.message || String(e), 'err'); return false; }
+  }
+  function avviso(testo, tipo) {
+    const a = $('#avviso');
+    a.textContent = testo; a.className = 'avviso visibile ' + (tipo || '');
+    clearTimeout(timerAvviso);
+    timerAvviso = setTimeout(() => { a.className = 'avviso'; }, 3800);
+  }
+
+  // ---------- date, giorni, PIN ----------
+  const due = (n) => String(n).padStart(2, '0');
+  const isoGiorno = (d) => d.getFullYear() + '-' + due(d.getMonth() + 1) + '-' + due(d.getDate());
+  function fraGiorni(k) { const d = new Date(); d.setDate(d.getDate() + k); return isoGiorno(d); }
+  function data(iso, conAnno) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+    if (!m) return iso || '?';
+    return m[3] + '/' + m[2] + (conAnno || m[1] !== String(new Date().getFullYear()) ? '/' + m[1] : '');
+  }
+  function giorni(maschera) {
+    const v = (maschera || '').split(';'), on = GIORNI.filter((g) => v[g[0]] === '1').map((g) => g[0]);
+    if (on.length === 7) return 'tutti i giorni';
+    if (!on.length) return 'nessun giorno';
+    const k = on.join(',');
+    if (k === '1,2,3,4,5') return 'lun–ven';
+    if (k === '6,0') return 'sab e dom';
+    return on.map((g) => BREVI[g]).join(' ');
+  }
+  const tuttoIlGiorno = (p) => p.dalle === '00:00' && (p.alle === '23:59' || p.alle === '24:00');
+  function pinDebole(p) {
+    if (/^(\d)\1+$/.test(p) || /^(\d\d)\1+$/.test(p) || /^(\d{3})\1$/.test(p)) return true;
+    let su = true, giu = true;
+    for (let i = 1; i < p.length; i++) {
+      const d = (p.charCodeAt(i) - p.charCodeAt(i - 1) + 10) % 10;
+      if (d !== 1) su = false;
+      if (d !== 9) giu = false;
+    }
+    return su || giu || ['2580', '0852', '1357', '2468', '112233'].includes(p);
+  }
+  function pinUsati(tranne) {
+    const v = [];
+    S.persone.forEach((p) => { if (p.pin && p !== tranne) v.push(p.pin); });
+    S.fissi.forEach((f) => { if (f.pin && f !== tranne) v.push(f.pin); });
+    return v;
+  }
+  function pinCasuale(cifre) {
+    const usati = new Set(pinUsati(null)), r = new Uint32Array(cifre);
+    for (let t = 0; t < 200; t++) {
+      crypto.getRandomValues(r);
+      let p = String(1 + (r[0] % 9));
+      for (let i = 1; i < cifre; i++) p += String(r[i] % 10);
+      if (!usati.has(p) && !pinDebole(p)) return p;
+    }
+    return '';
+  }
+  function testoRele(r) {
+    const v = String(r || '').split(';').filter((x) => /^\d+$/.test(x)).map((x) => parseInt(x, 10) + 1);
+    if (!v.length) return 'nessun relè';
+    return 'relè ' + (v.length < 2 ? v[0] : v.slice(0, -1).join(', ') + ' e ' + v[v.length - 1]);
+  }
+  const nascondi = (pin) => (S.mostra ? pin : '•'.repeat(Math.max(4, pin.length)));
+
+  // ---------- elenco ----------
+  function el(tag, classe, testo) {
+    const e = document.createElement(tag);
+    if (classe) e.className = classe;
+    if (testo !== undefined && testo !== null) e.textContent = testo;
+    return e;
+  }
+  function bottone(testo, fn, classe) {
+    const b = el('button', 'btn piccolo' + (classe ? ' ' + classe : ''), testo);
+    b.type = 'button'; b.addEventListener('click', fn);
+    return b;
+  }
+  function statoPersona(p) {
+    if (p.stato !== '1') return ['disattivato', 'spento'];
+    if (p.valid_on === '1') {
+      const oggi = isoGiorno(new Date());
+      if (p.al && oggi > p.al) return ['scaduto', 'spento'];
+      if (p.dal && oggi < p.dal) return ['dal ' + data(p.dal), 'attesa'];
+    }
+    return ['attivo', 'acceso'];
+  }
+  function descrizione(p) {
+    const parti = [];
+    if (p.valid_on === '1') {
+      parti.push(p.dal === p.al ? 'solo il ' + data(p.dal) : 'dal ' + data(p.dal) + ' al ' + data(p.al));
+      if (!tuttoIlGiorno(p)) parti.push(p.dalle + '–' + p.alle);
+      const g = giorni(p.settimana);
+      if (g !== 'tutti i giorni') parti.push(g);
+    } else parti.push('sempre valido');
+    if (p.pass_on === '1') parti.push(p.usi === '1' ? '1 apertura rimasta' : p.usi + ' aperture rimaste');
+    return parti.join(' · ');
+  }
+  function disegnaPersone() {
+    const ul = $('#lPersone');
+    ul.textContent = '';
+    $('#tPersone').textContent = 'Codici personali e temporanei' + (S.persone.length ? ' (' + S.persone.length + ')' : '');
+    if (!S.persone.length) { ul.append(el('li', 'vuoto', 'Nessun codice. Creane uno con "Nuovo codice ospite".')); return; }
+    for (const p of S.persone) {
+      const li = el('li', 'voce'), [stato, classe] = statoPersona(p), inGruppo = p.gruppo !== '-1' && p.gruppo !== '';
+      const r1 = el('div', 'riga');
+      r1.append(el('strong', 'nome', p.nome || '(senza nome)'), el('span', 'stato ' + classe, stato));
+      const r2 = el('div', 'dettagli');
+      r2.append(p.pin ? el('span', 'codice', nascondi(p.pin)) : el('span', null, 'nessun codice'), ' · ' + testoRele(p.rele));
+      const az = el('div', 'azioni');
+      if (p.pin) az.append(bottone('Condividi', () => apriCondividi(p)));
+      if (!inGruppo) {
+        az.append(bottone('Modifica', () => apriPersona(p)));
+        az.append(bottone(p.stato === '1' ? 'Disattiva' : 'Attiva', () => cambiaStato(p)));
+      }
+      az.append(bottone('Elimina', () => eliminaPersona(p), 'pericolo'));
+      li.append(r1, r2, el('div', 'dettagli', descrizione(p)), az);
+      if (inGruppo) li.append(el('p', 'nota', 'Fa parte di un gruppo: per modificarlo usa la pagina della placca.'));
+      ul.append(li);
+    }
+  }
+  function disegnaFissi() {
+    const ul = $('#lFissi');
+    ul.textContent = '';
+    if (!S.fissi.length) { ul.append(el('li', 'vuoto', 'Nessun PIN fisso.')); return; }
+    for (const f of S.fissi) {
+      const li = el('li', 'voce'), r1 = el('div', 'riga'), sx = el('div');
+      sx.append(el('span', 'codice', nascondi(f.pin)), el('span', 'dettagli', ' · ' + testoRele(f.rele)));
+      r1.append(sx);
+      if (f.pin === '0000') r1.append(el('span', 'stato allarme', 'di fabbrica: cambialo'));
+      else if (pinDebole(f.pin)) r1.append(el('span', 'stato attesa', 'facile da indovinare'));
+      const az = el('div', 'azioni');
+      az.append(bottone('Modifica', () => apriFisso(f)), bottone('Elimina', () => eliminaFisso(f), 'pericolo'));
+      li.append(r1, az);
+      ul.append(li);
+    }
+  }
+  function disegna() {
+    disegnaPersone();
+    disegnaFissi();
+    const b = $('#bMostra');
+    b.textContent = S.mostra ? 'Nascondi codici' : 'Mostra codici';
+    b.setAttribute('aria-pressed', String(S.mostra));
+  }
+
+  // ---------- codice di una persona ----------
+  function impostaRele(form, r) {
+    const v = String(r || '').split(';');
+    form.querySelectorAll('input[name=rele]').forEach((i) => { i.checked = v.includes(i.value); });
+  }
+  function aggiornaModulo() {
+    const f = $('#fPersona');
+    $('#boxTemp').hidden = f.tipo.value !== 'temp';
+    $('#boxUsi').hidden = !f.limita.checked;
+    const pin = f.pin.value.trim(), n = $('#nPin');
+    n.hidden = !(/^\d{4,8}$/.test(pin) && pinDebole(pin));
+    n.textContent = 'Attenzione: codice facile da indovinare.';
+  }
+  function apriPersona(p) {
+    S.persona = p || null;
+    const f = $('#fPersona');
+    f.reset();
+    $('#ePersona').textContent = '';
+    $('#tPersona').textContent = p ? 'Modifica: ' + p.nome : 'Nuovo codice ospite';
+    const temp = p ? p.valid_on === '1' : true;    // un codice ospite di solito ha una scadenza
+    f.nome.value = p ? p.nome : '';
+    f.pin.value = p ? p.pin : pinCasuale(6);
+    impostaRele(f, p ? p.rele : '0');
+    f.tipo.value = temp ? 'temp' : 'sempre';
+    f.dal.value = p && temp ? p.dal : isoGiorno(new Date());
+    f.al.value = p && temp ? p.al : fraGiorni(6);
+    f.dalle.value = p && temp && p.dalle ? p.dalle : '00:00';
+    f.alle.value = p && temp && p.alle ? p.alle : '23:59';
+    const sett = (p && temp ? p.settimana : '1;1;1;1;1;1;1').split(';');
+    f.querySelectorAll('input[name=giorno]').forEach((i) => { i.checked = sett[+i.value] === '1'; });
+    f.limita.checked = !!p && p.pass_on === '1';
+    f.usi.value = p && p.pass_on === '1' ? p.usi : '1';
+    f.attivo.checked = !p || p.stato === '1';
+    $('#boxAttivo').hidden = !p;
+    aggiornaModulo();
+    $('#dPersona').showModal();
+  }
+  function problemaPersona(f, p, nome, pin, rele, temp) {
+    if (!nome) return 'Scrivi un nome';
+    if (!/^[\p{L}\p{N} .'()_-]+$/u.test(nome)) return "Nel nome usa solo lettere, numeri, spazi e . ' ( ) - _";
+    if (S.persone.some((x) => x !== p && x.nome === nome)) return 'Esiste già un codice con questo nome';
+    if (!/^\d{4,8}$/.test(pin)) return 'Il codice deve avere da 4 a 8 cifre';
+    if (pinUsati(p).includes(pin)) return 'Questo codice è già usato da una persona o da un PIN fisso';
+    if (!rele.length) return 'Scegli almeno un relè';
+    if (temp) {
+      if (!f.dal.value || !f.al.value) return 'Indica le date di inizio e di fine';
+      if (f.al.value < f.dal.value) return 'La data di fine è prima di quella di inizio';
+      if (!f.dalle.value || !f.alle.value || f.alle.value <= f.dalle.value) return "L'ora di fine deve essere dopo quella di inizio";
+      if (!f.querySelector('input[name=giorno]:checked')) return 'Scegli almeno un giorno';
+    }
+    const usi = Number(f.usi.value);
+    if (f.limita.checked && !(Number.isInteger(usi) && usi >= 1 && usi <= 10000)) return 'Aperture consentite: da 1 a 10000';
+    return '';
+  }
+  async function salvaPersona(ev) {
+    ev.preventDefault();
+    const f = ev.currentTarget, p = S.persona, err = $('#ePersona');
+    const nome = f.nome.value.trim(), pin = f.pin.value.trim(), temp = f.tipo.value === 'temp';
+    const rele = Array.from(f.querySelectorAll('input[name=rele]:checked'), (i) => i.value);
+    err.textContent = problemaPersona(f, p, nome, pin, rele, temp);
+    if (err.textContent) return;
+    // per una persona esistente si conservano i campi che questa pagina non mostra (stanza, tessere...)
+    const dati = {
+      action: p ? '2' : '1', group: p ? p.gruppo : '-1', name: nome,
+      room: p && p.stanza !== '-1' ? p.stanza : '', relays: rele.join(';'),
+      status: !p || f.attivo.checked ? '1' : '0', type: p && p.tipo ? p.tipo : '0',
+      cards: p && p.tessere !== 'None' ? p.tessere : '', pin_mode: '1', pin_code: pin,
+      pass_enable: f.limita.checked ? '1' : '0', active_enable: temp ? '1' : '0'
+    };
+    if (p) dati.index = String(p.index);
+    if (f.limita.checked) dati.pass_num = String(Number(f.usi.value));
+    if (temp) {
+      Object.assign(dati, {
+        start_date: f.dal.value, end_date: f.al.value, start_time: f.dalle.value, end_time: f.alle.value,
+        week: [0, 1, 2, 3, 4, 5, 6].map((g) => (f.querySelector('input[name=giorno][value="' + g + '"]').checked ? '1' : '0')).join(';')
+      });
+    }
+    try {
+      await occupato(async () => { if (p) await controllaPersona(p); await scrivi('user', dati); await caricaTutto(); });
+    } catch (e) { err.textContent = e.message; return; }
+    $('#dPersona').close();
+    const nuovo = S.persone.find((x) => x.nome === nome && x.pin === pin);
+    if (!p && nuovo) apriCondividi(nuovo); else avviso('Salvato', 'ok');
+  }
+  // la persona cosi' com'e' sulla placca, con il solo stato cambiato
+  function datiPersona(p, stato) {
+    const d = {
+      action: '2', index: String(p.index), group: p.gruppo, name: p.nome,
+      room: p.stanza !== '-1' ? p.stanza : '', relays: p.rele, status: stato, type: p.tipo || '0',
+      cards: p.tessere !== 'None' ? p.tessere : '', pin_mode: p.pin ? '1' : (p.pin_mode || '0'), pin_code: p.pin,
+      pass_enable: p.pass_on === '1' ? '1' : '0', active_enable: p.valid_on === '1' ? '1' : '0'
+    };
+    if (p.pass_on === '1') d.pass_num = p.usi;
+    if (p.valid_on === '1') Object.assign(d, { start_date: p.dal, end_date: p.al, start_time: p.dalle, end_time: p.alle, week: p.settimana });
+    return d;
+  }
+  async function cambiaStato(p) {
+    const attiva = p.stato !== '1';
+    await prova(async () => {
+      await controllaPersona(p);
+      await scrivi('user', datiPersona(p, attiva ? '1' : '0'));
+      await caricaTutto();
+    }, attiva ? 'Codice attivato' : 'Codice disattivato: non apre più');
+  }
+  async function eliminaPersona(p) {
+    if (!confirm('Eliminare il codice di "' + p.nome + '"? Smetterà subito di aprire.')) return;
+    await prova(async () => {
+      await controllaPersona(p);
+      await scrivi('user', { action: '0', group: '-1', index: String(p.index) });
+      await caricaTutto();
+    }, 'Codice eliminato');
+  }
+
+  // ---------- PIN fissi ----------
+  function aggiornaFisso() {
+    const pin = $('#fFisso').pin.value.trim(), n = $('#nFisso');
+    n.hidden = !(/^\d{4,8}$/.test(pin) && pinDebole(pin));
+    n.textContent = pin === '0000' ? 'È il PIN di fabbrica: lo conoscono tutti.' : 'Attenzione: PIN facile da indovinare.';
+  }
+  function apriFisso(f) {
+    S.fisso = f || null;
+    const form = $('#fFisso');
+    form.reset();
+    $('#eFisso').textContent = '';
+    $('#tFisso').textContent = f ? 'Modifica PIN fisso' : 'Nuovo PIN fisso';
+    form.pin.value = f ? f.pin : '';
+    impostaRele(form, f ? f.rele : '0');
+    aggiornaFisso();
+    $('#dFisso').showModal();
+  }
+  async function salvaFisso(ev) {
+    ev.preventDefault();
+    const form = ev.currentTarget, f = S.fisso, err = $('#eFisso'), pin = form.pin.value.trim();
+    const rele = Array.from(form.querySelectorAll('input[name=rele]:checked'), (i) => i.value);
+    if (!/^\d{4,8}$/.test(pin)) err.textContent = 'Il PIN deve avere da 4 a 8 cifre';
+    else if (pinUsati(f).includes(pin)) err.textContent = 'Questo codice è già usato da una persona o da un PIN fisso';
+    else if (!rele.length) err.textContent = 'Scegli almeno un relè';
+    else err.textContent = '';
+    if (err.textContent) return;
+    const dati = { action: f ? '2' : '1', password: pin, relays: rele.join(';') };
+    if (f) dati.index = String(f.index);
+    try {
+      await occupato(async () => { if (f) await controllaFisso(f); await scrivi('unlock_passwd', dati); await caricaTutto(); });
+    } catch (e) { err.textContent = e.message; return; }
+    $('#dFisso').close();
+    avviso('PIN fisso salvato', 'ok');
+  }
+  async function eliminaFisso(f) {
+    if (!confirm('Eliminare questo PIN fisso (' + testoRele(f.rele) + ')? Smetterà subito di aprire.')) return;
+    await prova(async () => {
+      await controllaFisso(f);
+      await scrivi('unlock_passwd', { action: '0', index: String(f.index) });
+      await caricaTutto();
+    }, 'PIN fisso eliminato');
+  }
+
+  // ---------- condivisione ----------
+  function testoCondivisione(p) {
+    const r = ['Codice per entrare: ' + p.pin, 'Sulla tastiera della placca digita ' + p.pin + ' e poi #.'];
+    if (p.valid_on === '1') {
+      let v = 'Valido ' + (p.dal === p.al ? 'solo il ' + data(p.dal, true) : 'dal ' + data(p.dal, true) + ' al ' + data(p.al, true));
+      if (!tuttoIlGiorno(p)) v += ', dalle ' + p.dalle + ' alle ' + p.alle;
+      const g = giorni(p.settimana);
+      if (g !== 'tutti i giorni') v += ', ' + g;
+      r.push(v + '.');
+    }
+    if (p.pass_on === '1') r.push(p.usi === '1' ? 'Vale per una sola apertura.' : 'Vale per ' + p.usi + ' aperture.');
+    return r.join('\n');
+  }
+  function apriCondividi(p) {
+    const t = testoCondivisione(p);
+    $('#cCodice').textContent = p.pin;
+    $('#cTesto').value = t;
+    $('#bWhatsapp').href = 'https://wa.me/?text=' + encodeURIComponent(t);
+    $('#bCondividi').hidden = !navigator.share;
+    $('#dCondividi').showModal();
+  }
+  async function copia() {
+    const area = $('#cTesto');
+    try { await navigator.clipboard.writeText(area.value); avviso('Copiato', 'ok'); return; } catch (e) { /* senza https: a mano */ }
+    area.focus(); area.select();
+    try { document.execCommand('copy'); avviso('Copiato', 'ok'); } catch (e) { avviso('Seleziona il testo e copialo', 'err'); }
+  }
+
+  // ---------- impostazioni: tunnel e password ----------
+  function mostraPagina(id) {
+    ['pCodici', 'pImpostazioni'].forEach((p) => { $('#' + p).hidden = p !== id; });
+    document.querySelectorAll('.scheda-btn').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.pagina === id)));
+    if (id === 'pImpostazioni') prova(() => tunnel('stato'));
+  }
+  async function tunnel(azione, extra) {
+    const t = await conSessione(Object.assign({ op: 'tunnel', azione: azione }, extra || {}));
+    const s = {};
+    t.split('\n').forEach((r) => { const i = r.indexOf('='); if (i > 0) s[r.slice(0, i)] = r.slice(i + 1).trim(); });
+    disegnaTunnel(s);
+    return s;
+  }
+  const mb = (kb) => Math.round(Number(kb) / 1024) + ' MB';
+  function disegnaTunnel(s) {
+    const info = [];
+    let testo = 'fermo', classe = 'spento';
+    if (s.installato !== '1') {
+      testo = 'non installato';
+      info.push('Manca cloudflared in /dnake/data/cloudflared (vedi TUNNEL-SUL-MONITOR.md)');
+    } else if (s.token !== '1') {
+      testo = 'senza token'; classe = 'attesa';
+      info.push('Incolla qui sotto il token del tunnel');
+    } else if (s.attivo === '1') {
+      testo = 'attivo'; classe = 'acceso';
+      info.push('usa ' + mb(s.ram) + ' di RAM');
+    } else if (s.fermato === '1') {
+      testo = 'fermato a mano';
+    }
+    if (s.installato === '1') {
+      info.push(s.automatico !== '1' ? 'riavvio automatico non configurato'
+        : s.fermato === '1' ? 'riavvio automatico sospeso finché non premi Avvia'
+        : 'riavvio automatico: ' + (s.risveglio ? 'ultimo controllo della placca ' + s.risveglio : 'in attesa del primo controllo della placca'));
+    }
+    if (s.versione) info.push('cloudflared ' + s.versione);
+    if (s.libera) info.push('RAM libera sul monitor ' + mb(s.libera));
+    $('#tStato').textContent = testo;
+    $('#tStato').className = 'stato ' + classe;
+    $('#tDettagli').textContent = info.join(' · ');
+    $('#tAvvia').disabled = !(s.installato === '1' && s.token === '1' && s.attivo !== '1');
+    $('#tFerma').disabled = s.attivo !== '1';
+  }
+  async function fermaTunnel() {
+    const inCasa = /^((\d{1,3}\.){3}\d{1,3}|localhost)(:\d+)?$/.test(location.host);
+    const domanda = inCasa ? 'Fermare il tunnel? Da fuori casa la pagina non sarà più raggiungibile.'
+      : 'Stai usando proprio il tunnel: fermandolo perdi subito questa pagina e potrai riavviarlo solo da casa. Fermare?';
+    if (!confirm(domanda)) return;
+    await prova(() => tunnel('ferma'), 'Tunnel fermato');
+  }
+  async function salvaToken(ev) {
+    ev.preventDefault();
+    const f = ev.currentTarget, err = $('#eToken'), tok = f.token.value.trim();
+    err.textContent = /^eyJ[A-Za-z0-9+/=_-]{97,}$/.test(tok) ? '' : 'Incolla tutta la stringa del token: inizia con eyJ';
+    if (err.textContent) return;
+    try { await occupato(() => tunnel('token', { token: tok })); } catch (e) { err.textContent = e.message; return; }
+    f.reset();
+    avviso('Token salvato', 'ok');
+  }
+  function ricordato() { try { return !!archivio('localStorage').getItem(CHIAVE); } catch (e) { return false; } }
+  // password di accesso (admin): lettere e cifre, come chiedono le web app dei due dispositivi
+  const REGOLE = {
+    placca: [/^[0-9a-zA-Z]{6,16}$/, 'da 6 a 16 lettere o cifre'],
+    monitor: [/^[0-9a-zA-Z]{6,10}$/, 'da 6 a 10 lettere o cifre']
+  };
+  const DA_CASA = "La password del monitor si cambia da casa: apri sul Wi-Fi https://IP_DEL_MONITOR/data/pin/";
+
+  // il web del monitor e' lo stesso server che serve questa pagina: lo si chiama direttamente
+  async function monitorAccedi(hash) {
+    let r;
+    try { r = await fetch('/cgi-bin/webapi.cgi?api=login&username=admin&password=' + hash, { cache: 'no-store' }); }
+    catch (e) { throw new Error('Monitor non raggiungibile'); }
+    if (r.status === 404 || r.status === 403 || r.status >= 520) throw new Error(DA_CASA);
+    if (r.status === 503) throw new Error('Il monitor ha bloccato gli accessi per qualche minuto dopo una password sbagliata');
+    let j = null;
+    try { j = JSON.parse(await r.text()); } catch (e) { /* non e' JSON */ }
+    return !!(r.ok && j && j.data && j.data.SessionID);
+  }
+  // un solo tentativo, con una sessione appena aperta: cosi' un rifiuto vuol dire
+  // "password attuale sbagliata" (ripetere fa bloccare il dispositivo per qualche minuto)
+  async function cambiaSuPlacca(attuale, nuova, sbagliata) {
+    await accedi();
+    let j;
+    try { j = json(await invia({ op: 'api', api: 'password', sid: S.sid, chi: 'web', old_password: attuale, new_password: nuova })); }
+    catch (e) { throw e instanceof ErroreAccesso ? new Error(sbagliata) : e; }
+    if (esito(j) < 0) throw new Error(sbagliata);
+  }
+  async function cambiaSuMonitor(attuale, nuova, sbagliata) {
+    if (!(await monitorAccedi(md5(attuale)))) throw new Error(sbagliata);
+    const r = await fetch('/cgi-bin/webapi.cgi?api=password', { method: 'POST', cache: 'no-store',
+      body: new URLSearchParams({ user: 'web', old_password: attuale, new_password: nuova }) });
+    if (r.status === 401) throw new Error(sbagliata);
+    if (!r.ok) throw new Error('Errore del monitor (' + r.status + ')');
+    if (esito(json(await r.text())) < 0) throw new Error(sbagliata);
+  }
+  async function salvaPassword(ev) {
+    ev.preventDefault();
+    const f = ev.currentTarget, dev = f.dataset.dev, err = f.querySelector('.errore');
+    const attuale = f.attuale.value, nuova = f.nuova.value, regola = REGOLE[dev];
+    if (!attuale) err.textContent = 'Scrivi la password attuale';
+    else if (!regola[0].test(nuova)) err.textContent = 'La nuova password deve avere ' + regola[1];
+    else if (nuova !== f.ripeti.value) err.textContent = 'Le due password nuove non coincidono';
+    else if (nuova === attuale) err.textContent = 'La nuova password è uguale a quella attuale';
+    else err.textContent = '';
+    if (err.textContent) return;
+    const sbagliata = 'Password attuale non corretta. Dopo errori ripetuti il dispositivo blocca gli accessi per 2-3 minuti.';
+    try {
+      await occupato(() => (dev === 'monitor' ? cambiaSuMonitor : cambiaSuPlacca)(attuale, nuova, sbagliata));
+    } catch (e) { err.textContent = e.message; return; }
+    f.reset();
+    if (dev === 'placca') {                 // la pagina rientra con la nuova password
+      S.hash = md5(nuova); S.sid = '';
+      if (leggiCredenziali()) salvaCredenziali(ricordato());
+    }
+    avviso('Password ' + (dev === 'monitor' ? 'del monitor' : 'della placca') + ' cambiata', 'ok');
+  }
+
+  // ---------- accesso ----------
+  function mostra(vista) {
+    $('#vAccesso').hidden = vista !== 'accesso';
+    $('#vApp').hidden = vista !== 'app';
+    $('#bEsci').hidden = vista !== 'app';
+  }
+  async function entra(ev) {
+    ev.preventDefault();
+    const f = ev.currentTarget;
+    $('#eAccesso').textContent = '';
+    S.user = f.user.value.trim() || 'admin';
+    S.hash = md5(f.pass.value);
+    S.sid = '';
+    try { await occupato(async () => { await accedi(); await caricaTutto(); }); }
+    catch (e) { S.hash = ''; $('#eAccesso').textContent = e.message; return; }
+    salvaCredenziali(f.ricorda.checked);
+    f.pass.value = '';
+    mostra('app');
+  }
+  function esci() {
+    dimenticaCredenziali();
+    Object.assign(S, { hash: '', sid: '', persone: [], fissi: [], mostra: false });
+    $('#lPersone').textContent = '';
+    $('#lFissi').textContent = '';
+    mostra('accesso');
+  }
+
+  // ---------- avvio ----------
+  function costruisciGiorni() {
+    const box = $('#giorni');
+    for (const [indice, sigla, nome] of GIORNI) {
+      const l = el('label', 'scelta tonda'), i = document.createElement('input');
+      l.title = nome; i.type = 'checkbox'; i.name = 'giorno'; i.value = String(indice); i.setAttribute('aria-label', nome);
+      l.append(i, el('span', null, sigla));
+      box.append(l);
+    }
+  }
+  function collega() {
+    $('#fAccesso').addEventListener('submit', entra);
+    $('#bEsci').addEventListener('click', esci);
+    $('#bNuovo').addEventListener('click', () => apriPersona(null));
+    $('#bNuovoFisso').addEventListener('click', () => apriFisso(null));
+    $('#bAggiorna').addEventListener('click', () => prova(caricaTutto, 'Aggiornato'));
+    $('#bMostra').addEventListener('click', () => { S.mostra = !S.mostra; disegna(); });
+    $('#fPersona').addEventListener('submit', salvaPersona);
+    $('#fPersona').addEventListener('input', aggiornaModulo);
+    $('#fPersona').addEventListener('change', aggiornaModulo);
+    $('#bGenera').addEventListener('click', () => { $('#fPersona').pin.value = pinCasuale(6); aggiornaModulo(); });
+    document.querySelectorAll('[data-giorni]').forEach((b) => b.addEventListener('click', () => {
+      const f = $('#fPersona');
+      f.dal.value = isoGiorno(new Date());
+      f.al.value = fraGiorni(Number(b.dataset.giorni) - 1);
+    }));
+    document.querySelectorAll('.scheda-btn').forEach((b) => b.addEventListener('click', () => mostraPagina(b.dataset.pagina)));
+    $('#tAvvia').addEventListener('click', () => prova(() => tunnel('avvia'), 'Tunnel avviato'));
+    $('#tFerma').addEventListener('click', fermaTunnel);
+    $('#tAggiorna').addEventListener('click', () => prova(() => tunnel('stato')));
+    $('#fToken').addEventListener('submit', salvaToken);
+    document.querySelectorAll('.fPassword').forEach((f) => f.addEventListener('submit', salvaPassword));
+    $('#fFisso').addEventListener('submit', salvaFisso);
+    $('#fFisso').addEventListener('input', aggiornaFisso);
+    $('#bCopia').addEventListener('click', copia);
+    $('#bCondividi').addEventListener('click', () => { navigator.share({ text: $('#cTesto').value }).catch(() => {}); });
+    document.querySelectorAll('[data-chiudi]').forEach((b) => b.addEventListener('click', () => b.closest('dialog').close()));
+    document.querySelectorAll('dialog').forEach((d) => d.addEventListener('click', (ev) => { if (ev.target === d) d.close(); }));
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden && S.hash && !$('#vApp').hidden && !document.querySelector('dialog[open]')) prova(caricaTutto);
+    });
+  }
+  async function avvio() {
+    costruisciGiorni();
+    collega();
+    $('#dove').textContent = location.host || 'file locale';
+    if (md5('abc') !== '900150983cd24fb0d6963f7d28e17f72') {
+      mostra('accesso');
+      $('#eAccesso').textContent = 'Questo browser calcola male la password: prova con un altro.';
+      return;
+    }
+    const c = leggiCredenziali();
+    if (c) {
+      S.user = c.user; S.hash = c.hash;
+      $('#fAccesso').user.value = c.user;
+      try { await occupato(async () => { await accedi(); await caricaTutto(); }); mostra('app'); return; }
+      catch (e) { S.hash = ''; $('#eAccesso').textContent = e.message; }
+    }
+    mostra('accesso');
+  }
+  avvio();
+})();
+</script>
+</body>
+</html>

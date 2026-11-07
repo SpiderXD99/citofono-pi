@@ -1,0 +1,16 @@
+[Unit]
+Description=Citofono - tunnel Cloudflare
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# il token sta solo qui, file 600 (lo scrive installa.sh o la pagina)
+EnvironmentFile=/etc/citofono/tunnel.env
+ExecStart=/usr/bin/cloudflared tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
+Restart=on-failure
+RestartSec=5
+User=root
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

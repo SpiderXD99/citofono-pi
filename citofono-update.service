@@ -1,0 +1,9 @@
+[Unit]
+Description=Citofono - aggiornamento dal repository
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# scarica l'ultima versione e, solo se ci sono novita', riavvia il server
+ExecStart=/bin/sh -c 'git config --global --add safe.directory /opt/citofono; cd /opt/citofono && before=$(git rev-parse HEAD) && git pull --ff-only && [ "$before" != "$(git rev-parse HEAD)" ] && systemctl restart citofono.service || true'
