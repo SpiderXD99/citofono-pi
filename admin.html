@@ -4,47 +4,80 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Citofono — pannello</title>
+<meta name="color-scheme" content="light dark">
 <style>
   :root{
-    --bg:#f4f5f7; --card:#fff; --testo:#1a1d21; --tenue:#5c636e; --bordo:#d8dde3;
-    --primario:#1769d6; --primario-t:#fff; --ok:#1a7f45; --err:#c0392b; --campo:#fff;
+    --bg:#f3f5f8; --card:#fff; --testo:#111827; --tenue:#5d6877; --bordo:#e1e6ed;
+    --primario:#1d5fd1; --primario-t:#fff; --accent-soft:#e7effc;
+    --ok:#15703f; --ok-soft:#e1f3e8; --err:#b8322a; --err-soft:#fbe6e4; --campo:#f3f5f8;
+    --shadow:0 1px 2px rgb(15 23 42 / .05), 0 6px 18px rgb(15 23 42 / .05);
   }
-  :root:not([data-theme="light"]){ @media (prefers-color-scheme:dark){
-    :root{ --bg:#15171b; --card:#1e2127; --testo:#e8eaed; --tenue:#9aa3ad; --bordo:#333842;
-      --primario:#4a93f0; --primario-t:#0a0d12; --ok:#56c585; --err:#ef7a6e; --campo:#262a31; }
+  @media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+    --bg:#0c1117; --card:#151c25; --testo:#e6ecf3; --tenue:#9ba7b5; --bordo:#263140;
+    --primario:#5c94ff; --primario-t:#08111f; --accent-soft:#1a2741;
+    --ok:#57d391; --ok-soft:#12301f; --err:#ff7d71; --err-soft:#3a1a17; --campo:#0c1117; --shadow:none;
   }}
-  :root[data-theme="dark"]{ --bg:#15171b; --card:#1e2127; --testo:#e8eaed; --tenue:#9aa3ad;
-    --bordo:#333842; --primario:#4a93f0; --primario-t:#0a0d12; --ok:#56c585; --err:#ef7a6e; --campo:#262a31; }
+  :root[data-theme="dark"]{ --bg:#0c1117; --card:#151c25; --testo:#e6ecf3; --tenue:#9ba7b5; --bordo:#263140;
+    --primario:#5c94ff; --primario-t:#08111f; --accent-soft:#1a2741;
+    --ok:#57d391; --ok-soft:#12301f; --err:#ff7d71; --err-soft:#3a1a17; --campo:#0c1117; --shadow:none; }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--testo);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-    padding:16px;max-width:720px;margin:0 auto}
-  h1{font-size:1.4rem;margin:.4em 0}
-  h2{font-size:1.05rem;margin:0 0 .6em}
-  .scheda{background:var(--card);border:1px solid var(--bordo);border-radius:12px;padding:16px;margin:14px 0}
-  label{display:block;margin:.5em 0;font-size:.95rem}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--bg);color:var(--testo);
+    font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .barra{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:12px;
+    padding:12px 16px;padding-top:max(12px,env(safe-area-inset-top));
+    background:var(--card);border-bottom:1px solid var(--bordo)}
+  .barra .logo{width:34px;height:34px;border-radius:9px;flex:none}
+  .barra .titolo{flex:1;min-width:0}
+  .barra h1{margin:0;font-size:18px;line-height:1.2}
+  .barra .sotto{margin:1px 0 0;font-size:13px;color:var(--tenue)}
+  main{max-width:640px;margin:0 auto;padding:16px 16px calc(40px + env(safe-area-inset-bottom))}
+  h2{font-size:16px;margin:0 0 2px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .scheda{background:var(--card);border:1px solid var(--bordo);border-radius:14px;
+    box-shadow:var(--shadow);padding:18px;margin-bottom:16px}
+  label{display:block;margin-top:14px;font-size:14px;color:var(--tenue)}
   label small{color:var(--tenue);font-weight:400}
-  input{width:100%;padding:.55em .7em;margin-top:.25em;background:var(--campo);color:var(--testo);
-    border:1px solid var(--bordo);border-radius:8px;font:inherit}
-  button{padding:.55em 1em;border:0;border-radius:8px;font:inherit;font-weight:600;cursor:pointer;
-    background:var(--primario);color:var(--primario-t)}
-  button.sec{background:transparent;color:var(--primario);border:1px solid var(--primario)}
-  button.ghost{background:transparent;color:var(--tenue);border:1px solid var(--bordo);font-weight:400}
-  button:disabled{opacity:.5;cursor:default}
-  .riga{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:.6em}
-  .nota{color:var(--tenue);font-size:.88rem}
-  .err{color:var(--err);font-size:.9rem;min-height:1.2em}
+  input{display:block;width:100%;margin-top:6px;min-height:46px;padding:11px 13px;background:var(--campo);
+    color:var(--testo);border:1px solid var(--bordo);border-radius:11px;font:inherit;font-size:16px}
+  input:focus{outline:2px solid var(--primario);outline-offset:1px}
+  button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:48px;
+    padding:11px 20px;border:1px solid var(--primario);border-radius:12px;font:inherit;font-weight:600;
+    cursor:pointer;background:var(--primario);color:var(--primario-t);-webkit-tap-highlight-color:transparent;
+    transition:transform .05s}
+  button.sec{background:var(--card);color:var(--primario);border-color:var(--primario)}
+  button.ghost{background:var(--card);color:var(--tenue);border-color:var(--bordo);font-weight:500}
+  button:active{transform:translateY(1px)}
+  button:disabled{opacity:.45;cursor:default;transform:none}
+  button:focus-visible{outline:2px solid var(--primario);outline-offset:2px}
+  .riga{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:16px}
+  .nota{color:var(--tenue);font-size:14px;margin:6px 0 0}
+  .err{color:var(--err);font-size:14px;font-weight:600;min-height:1.2em;margin-top:10px}
   .ok{color:var(--ok)}
-  .stato{display:inline-block;padding:.15em .6em;border-radius:999px;font-size:.85rem;border:1px solid var(--bordo)}
-  .stato.on{color:var(--ok);border-color:var(--ok)} .stato.off{color:var(--tenue)}
-  pre{white-space:pre-wrap;background:var(--campo);border:1px solid var(--bordo);border-radius:8px;padding:10px;font-size:.85rem;max-height:40vh;overflow:auto}
+  .stato{display:inline-flex;align-items:center;gap:6px;padding:4px 11px 4px 9px;border-radius:999px;
+    font-size:12px;font-weight:700;border:1px solid var(--bordo);color:var(--tenue)}
+  .stato::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor;flex:none}
+  .stato.on{color:var(--ok);background:var(--ok-soft);border-color:transparent}
+  .stato.off{color:var(--tenue)}
+  #tLink{margin-top:14px;padding:12px 14px;border-radius:11px;background:var(--accent-soft);
+    color:var(--testo);font-size:14px;line-height:1.5}
+  #tLink a{color:var(--primario);font-weight:700;word-break:break-all}
+  pre{white-space:pre-wrap;background:var(--campo);border:1px solid var(--bordo);border-radius:11px;
+    padding:12px;font-size:13px;max-height:40vh;overflow:auto;margin-top:14px}
   .nascosto{display:none}
-  .avviso{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:var(--card);
-    border:1px solid var(--bordo);border-radius:10px;padding:.6em 1em;box-shadow:0 6px 24px #0004;opacity:0;transition:.2s}
-  .avviso.vedi{opacity:1}
+  .avviso{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));
+    transform:translate(-50%,8px);background:var(--card);border:1px solid var(--bordo);border-left:4px solid var(--primario);
+    border-radius:12px;padding:12px 18px;box-shadow:0 10px 30px rgb(0 0 0 / .25);opacity:0;pointer-events:none;
+    transition:.22s;font-weight:600;max-width:calc(100% - 32px)}
+  .avviso.vedi{opacity:1;transform:translate(-50%,0)}
+  .avviso.ok{border-left-color:var(--ok)} .avviso.err{border-left-color:var(--err)}
 </style>
 </head>
 <body>
-<h1>Citofono — pannello</h1>
+<header class="barra">
+  <svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#1d5fd1"/><g fill="#fff"><circle cx="20" cy="20" r="5"/><circle cx="32" cy="20" r="5"/><circle cx="44" cy="20" r="5"/><circle cx="20" cy="32" r="5"/><circle cx="32" cy="32" r="5"/><circle cx="44" cy="32" r="5"/><circle cx="20" cy="44" r="5"/><circle cx="32" cy="44" r="5"/><circle cx="44" cy="44" r="5"/></g></svg>
+  <div class="titolo"><h1>Citofono</h1><p class="sotto">Pannello di controllo</p></div>
+</header>
+<main>
 
 <!-- LOGIN -->
 <section id="vLogin" class="scheda">
@@ -142,6 +175,7 @@
   </section>
 </div>
 
+</main>
 <div id="avviso" class="avviso" role="status"></div>
 
 <script>
