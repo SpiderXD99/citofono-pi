@@ -1065,5 +1065,21 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
   }
 })();
 </script>
+<script>
+'use strict';
+// gesto nascosto: 5 tocchi veloci sul titolo aprono il pannello admin
+(function () {
+  var t = document.querySelector('.barra .titolo');
+  if (!t) return;
+  t.style.cursor = 'pointer';
+  var n = 0, ultimo = 0;
+  t.addEventListener('click', function () {
+    var ora = Date.now();
+    n = (ora - ultimo < 1500) ? n + 1 : 1;
+    ultimo = ora;
+    if (n >= 5) { n = 0; location.href = '/admin'; }
+  });
+})();
+</script>
 </body>
 </html>
