@@ -32,6 +32,7 @@ import urllib.request
 PREDEFINITI = {
     'PLACCA': '',                          # IP della placca, es. 192.168.68.90
     'MONITOR': '',                         # web del monitor, es. https://192.168.68.80
+    'PUBBLICO': '',                        # hostname del tunnel su Cloudflare, es. citofono.esempio.com
     'INDIRIZZO': '0.0.0.0',
     'PORTA': '443',
     'CERT': '/etc/citofono/cert.pem',
@@ -53,7 +54,7 @@ INOLTRATI = {'action', 'index', 'group', 'name', 'room', 'relays', 'status', 'ty
              'end_date', 'start_time', 'end_time', 'week', 'password', 'old_password',
              'new_password'}
 CAMPI_SEMPLICI = {'op', 'sid', 'api', 'user', 'hash', 'azione', 'token',
-                  'admin_user', 'admin_pass', 'nuovo_user', 'nuova_pass', 'placca', 'monitor'}
+                  'admin_user', 'admin_pass', 'nuovo_user', 'nuova_pass', 'placca', 'monitor', 'pubblico'}
 BLOCCATA = 'la placca ha bloccato gli accessi per qualche minuto dopo una password sbagliata: riprova tra 2-3 minuti'
 ITER = 210000                              # iterazioni PBKDF2 per la password admin
 SESSIONI = {}                              # token admin -> scadenza (epoch)
@@ -240,9 +241,16 @@ def comanda_tunnel(azione, token):
             raise Errore(400, 'token non valido')
         if len(tok) < 100:
             raise Errore(400, 'token troppo corto: copia tutta la stringa che inizia con eyJ')
-        fd = os.open(CONF['TUNNEL_ENV'], os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, 'w', encoding='utf-8') as f:
-            f.write('TUNNEL_TOKEN=%s\n' % tok)
+        try:
+            d = os.path.dirname(CONF['TUNNEL_ENV'])
+            if d and not os.path.isdir(d):
+                os.makedirs(d, 0o700, exist_ok=True)
+            fd = os.open(CONF['TUNNEL_ENV'], os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                f.write('TUNNEL_TOKEN=%s\n' % tok)
+        except OSError as e:
+            raise Errore(500, 'non riesco a scrivere %s: %s. Il server deve girare come root '
+                              '(servizio citofono.service).' % (CONF['TUNNEL_ENV'], e.strerror or e))
         if systemctl('is-active', s)[1] == 'active':
             systemctl('restart', s)
     else:
@@ -386,7 +394,7 @@ def gestisci(corpo, dal_tunnel, cookie, ip):
         SESSIONI.pop(cookie, None)
         return js, b'{"ok":1}', {'Set-Cookie': 'AdminSID=; Max-Age=0; Path=/'}
     if op == 'admin_state':
-        dati = {'placca': CONF['PLACCA'], 'monitor': CONF['MONITOR'],
+        dati = {'placca': CONF['PLACCA'], 'monitor': CONF['MONITOR'], 'pubblico': CONF['PUBBLICO'],
                 'lan_only': CONF['ADMIN_LAN_ONLY'], 'tunnel': stato_tunnel()}
         return js, json.dumps(dati).encode('utf-8'), None
     if op == 'admin_save':
@@ -401,6 +409,11 @@ def gestisci(corpo, dal_tunnel, cookie, ip):
             if mo and not re.fullmatch(r'https?://[0-9A-Za-z.:-]+', mo):
                 raise Errore(400, 'indirizzo monitor non valido')
             agg['MONITOR'] = mo
+        if 'pubblico' in campi:
+            pu = urllib.parse.unquote(campi.get('pubblico', ''))
+            if pu and (not re.fullmatch(r'[0-9A-Za-z.-]{1,253}', pu) or '.' not in pu):
+                raise Errore(400, 'hostname pubblico non valido')
+            agg['PUBBLICO'] = pu
         if agg:
             salva_conf(agg)
         return js, b'{"ok":1}', None

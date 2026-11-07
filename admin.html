@@ -65,6 +65,7 @@
   <section class="scheda">
     <h2>Tunnel Cloudflare <span id="tStato" class="stato off">…</span></h2>
     <p class="nota" id="tInfo"></p>
+    <p id="tLink" class="nota nascosto"></p>
     <div class="riga">
       <button id="tAvvia" class="sec">Avvia</button>
       <button id="tFerma" class="sec">Ferma</button>
@@ -85,6 +86,8 @@
         <input name="placca" inputmode="decimal" placeholder="192.168.1.90"></label>
       <label>Web del monitor <small>(facoltativo, con https://)</small>
         <input name="monitor" placeholder="https://192.168.1.80"></label>
+      <label>Indirizzo pubblico del tunnel <small>(hostname su Cloudflare, es. citofono.esempio.com)</small>
+        <input name="pubblico" placeholder="citofono.esempio.com"></label>
       <div class="riga"><button>Salva</button></div>
       <p class="err" id="eIndirizzi"></p>
     </form>
@@ -147,6 +150,7 @@
   const $=s=>document.querySelector(s);
   const CGI='/data/pin/api.cgi';          // assoluto: la pagina puo' stare su /admin o /data/pin/admin.html
   let placcaSid='';
+  let pubblico='';                        // hostname del tunnel, per il link "raggiungibile qui"
 
   function avviso(t,cls){ const a=$('#avviso'); a.textContent=t; a.className='avviso vedi'+(cls?' '+cls:'');
     clearTimeout(avviso.t); avviso.t=setTimeout(()=>a.className='avviso',2200); }
@@ -202,6 +206,8 @@
     catch(e){ if(/admin/i.test(e.message)){ scaduto(); return;} avviso(e.message,'err'); return; }
     $('#fIndirizzi').placca.value=s.placca||'';
     $('#fIndirizzi').monitor.value=s.monitor||'';
+    pubblico=s.pubblico||'';
+    $('#fIndirizzi').pubblico.value=pubblico;
     disegnaTunnel(s.tunnel||{});
   }
   function disegnaTunnel(t){
@@ -217,6 +223,17 @@
     $('#tInfo').textContent=info.join(' · ');
     $('#tAvvia').disabled=!(t.installato&&t.token&&!t.attivo);
     $('#tFerma').disabled=!t.attivo;
+    const link=$('#tLink');
+    if(t.attivo&&pubblico){
+      const url='https://'+pubblico+'/data/pin/';
+      link.innerHTML='Raggiungibile qui: <a href="'+url+'" target="_blank" rel="noopener">'+url+'</a>';
+      link.classList.remove('nascosto');
+    }else if(t.attivo&&!pubblico){
+      link.textContent='Tunnel attivo. Imposta l’"Indirizzo pubblico del tunnel" qui sotto per vedere il link.';
+      link.classList.remove('nascosto');
+    }else{
+      link.classList.add('nascosto');
+    }
   }
   async function tunnel(azione,extra){
     const t=await invia(Object.assign({op:'tunnel',azione:azione},extra||{}));
@@ -239,14 +256,15 @@
     await tunnel('ferma'); avviso('Tunnel fermato','ok'); }));
   $('#tAgg').addEventListener('click',proteggi(caricaStato));
   $('#fToken').addEventListener('submit',proteggi(async ev=>{ ev.preventDefault();
-    const tok=ev.currentTarget.token.value.trim();
+    const f=ev.currentTarget, tok=f.token.value.trim();
     if(!/^eyJ[A-Za-z0-9+/=_-]{97,}$/.test(tok)){ $('#eToken').textContent='Incolla tutta la stringa: inizia con eyJ'; return; }
-    $('#eToken').textContent=''; await tunnel('token',{token:tok}); ev.currentTarget.reset(); avviso('Token salvato','ok'); }));
+    $('#eToken').textContent=''; await tunnel('token',{token:tok}); f.reset(); avviso('Token salvato','ok'); }));
 
   $('#fIndirizzi').addEventListener('submit',proteggi(async ev=>{ ev.preventDefault();
     const f=ev.currentTarget; $('#eIndirizzi').textContent='';
-    await invia({op:'admin_save',placca:f.placca.value.trim(),monitor:f.monitor.value.trim()});
-    avviso('Indirizzi salvati','ok'); }));
+    const pu=f.pubblico.value.trim().replace(/^https?:\/\//,'').replace(/\/.*$/,'');
+    await invia({op:'admin_save',placca:f.placca.value.trim(),monitor:f.monitor.value.trim(),pubblico:pu});
+    await caricaStato(); avviso('Indirizzi salvati','ok'); }));
 
   $('#fCred').addEventListener('submit',proteggi(async ev=>{ ev.preventDefault();
     const f=ev.currentTarget,err=$('#eCred');

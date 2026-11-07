@@ -12,6 +12,9 @@ RestartSec=3
 User=root
 NoNewPrivileges=yes
 ProtectSystem=full
+# /etc e' in sola lettura (ProtectSystem), ma qui stanno token, config e
+# password del pannello: questa cartella deve restare scrivibile.
+ReadWritePaths=/etc/citofono
 ProtectHome=yes
 
 [Install]
