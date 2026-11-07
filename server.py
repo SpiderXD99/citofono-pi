@@ -74,8 +74,8 @@ _ICONA = ("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox=
 MANIFEST = json.dumps({
     'name': 'Citofono PIN', 'short_name': 'Citofono', 'start_url': '/', 'scope': '/',
     'display': 'standalone', 'background_color': '#0c1117', 'theme_color': '#1d5fd1',
-    'icons': [{'src': _ICONA, 'sizes': '192x192', 'type': 'image/svg+xml', 'purpose': 'any'},
-              {'src': _ICONA, 'sizes': '512x512', 'type': 'image/svg+xml', 'purpose': 'maskable'}],
+    'icons': [{'src': '/icona-192.png', 'sizes': '192x192', 'type': 'image/png', 'purpose': 'any'},
+              {'src': '/icona-512.png', 'sizes': '512x512', 'type': 'image/png', 'purpose': 'maskable'}],
 }).encode('utf-8')
 SW = (b"self.addEventListener('install',function(e){self.skipWaiting();});\n"
       b"self.addEventListener('activate',function(e){e.waitUntil(self.clients.claim());});\n"
@@ -523,6 +523,12 @@ class Gestore(http.server.BaseHTTPRequestHandler):
             return self.manda(200, 'application/manifest+json; charset=utf-8', MANIFEST)
         if p == '/sw.js':
             return self.manda(200, 'text/javascript; charset=utf-8', SW)
+        if p in ('/icona-180.png', '/icona-192.png', '/icona-512.png'):
+            try:
+                with open(os.path.join(CONF['APP_DIR'], p.lstrip('/')), 'rb') as f:
+                    return self.manda(200, 'image/png', f.read())
+            except OSError:
+                return self.manda(404, 'text/plain; charset=utf-8', b'non trovato\n')
         self.manda(404, 'text/plain; charset=utf-8', b'non trovato\n')
 
     do_HEAD = do_GET
