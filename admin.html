@@ -343,5 +343,21 @@
   invia({op:'admin_state'}).then(()=>mostraPannello()).catch(()=>{});
 })();
 </script>
+<script>
+'use strict';
+// gesto nascosto: 5 tocchi veloci sull'icona tornano alla pagina dei PIN
+(function () {
+  var el = document.querySelector('.barra .logo');
+  if (!el) return;
+  el.style.cursor = 'pointer';
+  var n = 0, ultimo = 0;
+  el.addEventListener('click', function () {
+    var ora = Date.now();
+    n = (ora - ultimo < 1500) ? n + 1 : 1;
+    ultimo = ora;
+    if (n >= 5) { n = 0; location.href = '/'; }
+  });
+})();
+</script>
 </body>
 </html>

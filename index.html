@@ -47,6 +47,7 @@ h2 { font-size: 17px; }
 .barra .titolo { flex: 1; min-width: 0; }
 .barra .sotto { margin: 2px 0 0; font-size: 13px; color: var(--muted);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.barra .logo { width: 34px; height: 34px; border-radius: 9px; flex: none; }
 .giro { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--line);
   border-top-color: var(--accent); visibility: hidden; animation: gira .8s linear infinite; }
 body.occupato .giro { visibility: visible; }
@@ -151,6 +152,7 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
 </head>
 <body>
 <header class="barra">
+  <svg class="logo" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#1d5fd1"/><g fill="#fff"><circle cx="20" cy="20" r="5"/><circle cx="32" cy="20" r="5"/><circle cx="44" cy="20" r="5"/><circle cx="20" cy="32" r="5"/><circle cx="32" cy="32" r="5"/><circle cx="44" cy="32" r="5"/><circle cx="20" cy="44" r="5"/><circle cx="32" cy="44" r="5"/><circle cx="44" cy="44" r="5"/></g></svg>
   <div class="titolo">
     <h1>Citofono · PIN</h1>
     <p class="sotto" id="dove"></p>
@@ -1067,17 +1069,18 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
 </script>
 <script>
 'use strict';
-// gesto nascosto: 5 tocchi veloci sul titolo aprono il pannello admin
+// gesto nascosto: 5 tocchi veloci sull'icona (o sul titolo) aprono il pannello admin
 (function () {
-  var t = document.querySelector('.barra .titolo');
-  if (!t) return;
-  t.style.cursor = 'pointer';
   var n = 0, ultimo = 0;
-  t.addEventListener('click', function () {
+  function tocco() {
     var ora = Date.now();
     n = (ora - ultimo < 1500) ? n + 1 : 1;
     ultimo = ora;
     if (n >= 5) { n = 0; location.href = '/admin'; }
+  }
+  ['.barra .logo', '.barra .titolo'].forEach(function (sel) {
+    var el = document.querySelector(sel);
+    if (el) { el.style.cursor = 'pointer'; el.addEventListener('click', tocco); }
   });
 })();
 </script>
