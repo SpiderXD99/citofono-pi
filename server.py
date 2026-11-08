@@ -24,6 +24,7 @@ import secrets
 import ssl
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -155,26 +156,40 @@ def verifica_admin(utente, password):
 
 
 # ---------- rete verso placca / monitor ----------
+# La web della placca e' un mini_httpd minuscolo (anche dietro il relay sul
+# monitor nei kit a 2 fili): regge male le connessioni simultanee. Quindi le
+# richieste alla placca si fanno UNA ALLA VOLTA (_PLACCA_LOCK) e si ritenta se la
+# connessione viene rifiutata, invece di restituire subito 502.
+_PLACCA_LOCK = threading.Lock()
+
+
 def richiesta(url, dati=None, sid='', timeout=15):
     intestazioni = {}
     if sid:
         intestazioni['Cookie'] = 'SessionID=' + sid
-    if dati is not None:
+    corpo = dati
+    if corpo is not None:
         intestazioni['Content-Type'] = 'application/x-www-form-urlencoded'
-        dati = dati.encode('ascii')
+        corpo = corpo.encode('ascii')
     contesto = ssl._create_unverified_context()  # certificati autofirmati di placca/monitor
-    try:
-        with urllib.request.urlopen(urllib.request.Request(url, data=dati, headers=intestazioni),
-                                    timeout=timeout, context=contesto) as r:
-            return r.status, r.read()
-    except urllib.error.HTTPError as e:
-        return e.code, e.read()
-    except (urllib.error.URLError, OSError):
-        return 0, b''
+    for tentativo in range(3):
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, data=corpo, headers=intestazioni),
+                                        timeout=timeout, context=contesto) as r:
+                return r.status, r.read()
+        except urllib.error.HTTPError as e:
+            return e.code, e.read()
+        except (urllib.error.URLError, OSError):
+            if tentativo < 2:
+                time.sleep(0.3)
+                continue
+            return 0, b''
+    return 0, b''
 
 
 def alla_placca(percorso, dati=None, sid=''):
-    stato, corpo = richiesta('http://' + CONF['PLACCA'] + percorso, dati, sid)
+    with _PLACCA_LOCK:                      # una richiesta alla placca per volta
+        stato, corpo = richiesta('http://' + CONF['PLACCA'] + percorso, dati, sid)
     if stato == 200:
         return corpo
     if stato == 401:
