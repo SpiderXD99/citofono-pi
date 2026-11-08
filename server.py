@@ -16,6 +16,7 @@ Solo libreria standard di Python 3. Avvio: server.py --conf /etc/citofono/citofo
 
 import hashlib
 import hmac
+import http.client
 import http.server
 import json
 import os
@@ -164,26 +165,42 @@ _PLACCA_LOCK = threading.Lock()
 
 
 def richiesta(url, dati=None, sid='', timeout=15):
-    intestazioni = {}
+    # http.client con close() esplicito: la web della placca (mini_httpd via relay)
+    # gestisce una connessione per volta, e una keep-alive lasciata aperta da urllib
+    # bloccava la richiesta successiva (RemoteDisconnected). Qui ogni connessione si
+    # chiude subito dopo la risposta.
+    u = urllib.parse.urlsplit(url)
+    percorso = u.path + (('?' + u.query) if u.query else '')
+    intestazioni = {'Connection': 'close'}
     if sid:
         intestazioni['Cookie'] = 'SessionID=' + sid
-    corpo = dati
-    if corpo is not None:
+    corpo, metodo = None, 'GET'
+    if dati is not None:
         intestazioni['Content-Type'] = 'application/x-www-form-urlencoded'
-        corpo = corpo.encode('ascii')
-    contesto = ssl._create_unverified_context()  # certificati autofirmati di placca/monitor
+        corpo = dati.encode('ascii')
+        metodo = 'POST'
     for tentativo in range(3):
+        conn = None
         try:
-            with urllib.request.urlopen(urllib.request.Request(url, data=corpo, headers=intestazioni),
-                                        timeout=timeout, context=contesto) as r:
-                return r.status, r.read()
-        except urllib.error.HTTPError as e:
-            return e.code, e.read()
-        except (urllib.error.URLError, OSError):
+            if u.scheme == 'https':                # monitor (certificato autofirmato)
+                conn = http.client.HTTPSConnection(u.hostname, u.port or 443, timeout=timeout,
+                                                   context=ssl._create_unverified_context())
+            else:                                  # placca (http, dietro il relay)
+                conn = http.client.HTTPConnection(u.hostname, u.port or 80, timeout=timeout)
+            conn.request(metodo, percorso, body=corpo, headers=intestazioni)
+            r = conn.getresponse()
+            return r.status, r.read()
+        except (http.client.HTTPException, OSError):
             if tentativo < 2:
                 time.sleep(0.3)
                 continue
             return 0, b''
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except OSError:
+                    pass
     return 0, b''
 
 
