@@ -175,7 +175,7 @@ def richiesta(url, dati=None, sid='', timeout=15):
     if sid:
         intestazioni['Cookie'] = 'SessionID=' + sid
     corpo, metodo = None, 'GET'
-    if dati is not None:
+    if dati:                                   # corpo vuoto o None = lettura (GET); con campi = POST
         intestazioni['Content-Type'] = 'application/x-www-form-urlencoded'
         corpo = dati.encode('ascii')
         metodo = 'POST'
