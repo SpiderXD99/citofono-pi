@@ -581,6 +581,11 @@ def gestisci(corpo, dal_tunnel, cookie, cookie_pin, ip):
         raise Errore(400, 'sessione non valida')
     js, testo = 'application/json; charset=utf-8', 'text/plain; charset=utf-8'
     extra = None
+    # sessione della pagina / (porta il ruolo); il gestore vale anche come sessione admin
+    sess = pinsess(cookie_pin)
+    ruolo = sess['ruolo'] if sess else None
+    gestore = ruolo == 'admin'
+    admin_pagina = gestore or sessione_ok(cookie)
 
     # --- admin: login e operazioni sul Pi ---
     if op == 'admin_login':
@@ -609,11 +614,11 @@ def gestisci(corpo, dal_tunnel, cookie, cookie_pin, ip):
     if op.startswith('admin_') and op != 'admin_login':
         if CONF['ADMIN_LAN_ONLY'] == '1' and dal_tunnel:
             raise Errore(403, 'il pannello admin si apre solo da casa')
-        if not sessione_ok(cookie):
+        if not admin_pagina:                     # sessione del pannello OPPURE gestore della pagina /
             raise Errore(401, 'accesso admin richiesto')
     elif op in ('tunnel', 'monitor'):
-        # il pannello (sessione admin) oppure la pagina PIN (sessione valida della placca)
-        if not sessione_ok(cookie):
+        # il pannello/gestore, oppure la pagina PIN con una sessione valida della placca
+        if not admin_pagina:
             if not sid:
                 raise Errore(401, 'accesso richiesto')
             alla_placca('/cgi-bin/webapi.cgi?api=unlock_passwd', None, sid)
@@ -752,11 +757,7 @@ def gestisci(corpo, dal_tunnel, cookie, cookie_pin, ip):
             raise Errore(400, 'password mancanti')
         return js, password_monitor(campi['old_password'], campi['new_password']), None
 
-    # --- pagina PIN: ruolo della sessione corrente (None = modo compatibile, pieni poteri) ---
-    sess = pinsess(cookie_pin)
-    ruolo = sess['ruolo'] if sess else None
-    admin_pagina = (sess and sess['ruolo'] == 'admin') or sessione_ok(cookie)
-
+    # --- pagina PIN (ruolo e admin_pagina sono gia' stati calcolati in cima) ---
     if op == 'chisono':                          # chi sono io per la pagina /
         if sess:
             return js, json.dumps({'user': sess['user'], 'ruolo': sess['ruolo']}).encode('utf-8'), None
@@ -783,9 +784,6 @@ def gestisci(corpo, dal_tunnel, cookie, cookie_pin, ip):
         salva_proprieta(d)
         return js, b'{"ok":1}', None
 
-    # --- pagina PIN: proxy verso la placca (serve la sessione della placca) ---
-    if not re.fullmatch(r'[0-9.:]+', CONF['PLACCA']):
-        raise Errore(502, 'IP della placca non impostato: aprilo nel pannello admin')
     if op == 'login':
         h = campi.get('hash', '')
         pin_user = pin_ruolo = None
@@ -796,20 +794,22 @@ def gestisci(corpo, dal_tunnel, cookie, cookie_pin, ip):
             pw = urllib.parse.unquote_plus(campi.get('pass', ''))
             if not pw:
                 raise Errore(401, 'utente o password non validi')
-            if carica_utenti():                      # ci sono account: verifica l'account
+            acc = verifica_utente(u, pw)
+            boot = (not esiste_admin()) and verifica_admin(u, pw)   # primo gestore: password iniziale del pannello
+            if acc or boot:
                 if bloccato(ip):
                     raise Errore(429, 'troppi tentativi: riprova tra qualche minuto')
-                if not verifica_utente(u, pw):
-                    segna_fallito(ip)
-                    raise Errore(401, 'utente o password non validi')
                 TENTATIVI.pop(ip, None)
+                pin_user = u
+                pin_ruolo = 'admin' if boot else (ruolo_utente(u) or 'user')
                 ph = leggi_placca_hash()
-                if not ph:
+                if pin_ruolo != 'admin' and not ph:
                     raise Errore(502, 'password della placca non impostata nel pannello admin')
-                pin_user, pin_ruolo = u, (ruolo_utente(u) or 'user')
-            else:                                    # nessun account: pw = password della placca
+            elif not carica_utenti():                # nessun account: pw = password della placca
                 ph = hashlib.md5(pw.encode('utf-8')).hexdigest()
-        risp = alla_placca('/cgi-bin/webapi.cgi?api=login&username=%s&password=%s' % (UTENTE, ph))
+            else:
+                segna_fallito(ip)
+                raise Errore(401, 'utente o password non validi')
         extra = None
         if pin_user:                                 # sessione della pagina / col ruolo
             tok = nuova_pinsess(pin_user, pin_ruolo)
@@ -817,7 +817,15 @@ def gestisci(corpo, dal_tunnel, cookie, cookie_pin, ip):
             if CONF['CERT']:
                 c += '; Secure'
             extra = {'Set-Cookie': c}
-        return js, risp, extra
+        if ph and re.fullmatch(r'[0-9.:]+', CONF['PLACCA']):
+            return js, alla_placca('/cgi-bin/webapi.cgi?api=login&username=%s&password=%s' % (UTENTE, ph)), extra
+        if pin_user:                                 # bootstrap: entra lo stesso (serve solo la scheda Admin)
+            return js, b'{"data":{"SessionID":""},"bootstrap":1}', extra
+        raise Errore(502, 'IP della placca non impostato: aprilo nel pannello admin')
+
+    # --- pagina PIN: proxy verso la placca (serve la sessione della placca) ---
+    if not re.fullmatch(r'[0-9.:]+', CONF['PLACCA']):
+        raise Errore(502, 'IP della placca non impostato: aprilo nel pannello admin')
     if op == 'api':
         api = campi.get('api', '')
         if api not in ('user', 'unlock_passwd', 'password', 'card'):
@@ -871,7 +879,7 @@ class Gestore(http.server.BaseHTTPRequestHandler):
         self.send_header('Content-Length', str(len(corpo)))
         self.send_header('Cache-Control', 'no-store')
         self.send_header('X-Content-Type-Options', 'nosniff')
-        self.send_header('X-Frame-Options', 'DENY')
+        self.send_header('X-Frame-Options', 'SAMEORIGIN')   # la scheda Admin incornicia /pannello
         self.send_header('Referrer-Policy', 'no-referrer')
         for k, v in (extra or {}).items():
             self.send_header(k, v)
@@ -893,7 +901,11 @@ class Gestore(http.server.BaseHTTPRequestHandler):
             return self.manda(302, 'text/plain; charset=utf-8', b'', {'Location': '/'})
         if p in ('/', '/index.html', '/data/pin/', '/data/pin/index.html'):
             return self._pagina(CONF['PAGINA'])
+        # il vecchio pannello separato non esiste piu': ora e' la scheda "Admin" dentro /
         if p in ('/admin', '/admin/', '/admin.html', '/data/pin/admin', '/data/pin/admin.html'):
+            return self.manda(302, 'text/plain; charset=utf-8', b'', {'Location': '/'})
+        # il pannello vive incorniciato (iframe) nella scheda Admin: percorso interno
+        if p in ('/pannello', '/pannello.html'):
             if CONF['ADMIN_LAN_ONLY'] == '1' and self.headers.get('Cf-Connecting-Ip'):
                 return self.manda(403, 'text/plain; charset=utf-8', b'il pannello admin si apre solo da casa\n')
             return self._pagina(CONF['ADMIN_PAGINA'])

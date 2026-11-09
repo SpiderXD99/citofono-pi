@@ -192,6 +192,7 @@ body[data-ruolo="user"] .solo-admin { display: none !important; }
     <nav class="schede" aria-label="Sezioni">
       <button type="button" class="scheda-btn" data-pagina="pCodici" aria-pressed="true">Codici</button>
       <button type="button" class="scheda-btn solo-admin" data-pagina="pImpostazioni" aria-pressed="false">Impostazioni</button>
+      <button type="button" class="scheda-btn solo-admin" data-pagina="pAdmin" aria-pressed="false">Admin</button>
     </nav>
     <div id="pCodici">
     <button id="bNuovo" class="btn primario largo grande solo-admin" type="button">+ Nuovo codice ospite</button>
@@ -288,6 +289,11 @@ body[data-ruolo="user"] .solo-admin { display: none !important; }
         </form>
         <p class="nota">Quella del monitor si cambia da casa: dall'esterno il tunnel apre solo questa pagina.</p>
       </section>
+    </div>
+
+    <div id="pAdmin" class="solo-admin" hidden>
+      <iframe id="adminFrame" title="Amministrazione" loading="lazy"
+        style="width:100%;border:0;border-radius:12px;min-height:82vh;background:var(--card)"></iframe>
     </div>
   </section>
 </main>
@@ -401,7 +407,7 @@ body[data-ruolo="user"] .solo-admin { display: none !important; }
   const GIORNI = [[1, 'L', 'lunedì'], [2, 'M', 'martedì'], [3, 'M', 'mercoledì'], [4, 'G', 'giovedì'],
     [5, 'V', 'venerdì'], [6, 'S', 'sabato'], [0, 'D', 'domenica']];
   const BREVI = ['dom', 'lun', 'mar', 'mer', 'gio', 'ven', 'sab'];
-  const S = { user: 'admin', pass: '', sid: '', ruolo: 'admin', assegnabili: [], proprieta: {},
+  const S = { user: 'admin', pass: '', sid: '', ruolo: 'admin', bootstrap: false, assegnabili: [], proprieta: {},
     persone: [], fissi: [], card: null, mostra: false, persona: null, fisso: null };
 
   // ---------- md5 (la placca vuole md5 della password; il browser non lo offre) ----------
@@ -473,8 +479,9 @@ body[data-ruolo="user"] .solo-admin { display: none !important; }
     try { t = await invia({ op: 'login', user: S.user, pass: S.pass }); }
     catch (e) { if (e instanceof ErroreAccesso) throw new Error('Utente o password non corretti'); throw e; }
     const j = json(t), sid = j && j.data && j.data.SessionID;
+    if (j && j.bootstrap) { S.sid = ''; S.bootstrap = true; return; }   // primo gestore, placca non ancora pronta
     if (!sid) throw new Error('Utente o password non corretti');
-    S.sid = String(sid);
+    S.sid = String(sid); S.bootstrap = false;
   }
   async function conSessione(campi) {      // se la sessione e' scaduta rientra una volta e riprova
     for (let giro = 0; ; giro++) {
@@ -1173,9 +1180,10 @@ body[data-ruolo="user"] .solo-admin { display: none !important; }
 
   // ---------- impostazioni: tunnel e password ----------
   function mostraPagina(id) {
-    ['pCodici', 'pImpostazioni'].forEach((p) => { $('#' + p).hidden = p !== id; });
+    ['pCodici', 'pImpostazioni', 'pAdmin'].forEach((p) => { $('#' + p).hidden = p !== id; });
     document.querySelectorAll('.scheda-btn').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.pagina === id)));
     if (id === 'pImpostazioni') prova(() => tunnel('stato'));
+    if (id === 'pAdmin') { const fr = $('#adminFrame'); if (!fr.src) fr.src = '/pannello?incorniciato=1'; }
   }
   async function tunnel(azione, extra) {
     const t = await conSessione(Object.assign({ op: 'tunnel', azione: azione }, extra || {}));
@@ -1300,11 +1308,12 @@ body[data-ruolo="user"] .solo-admin { display: none !important; }
     S.user = f.user.value.trim() || 'admin';
     S.pass = f.pass.value;
     S.sid = '';
-    try { await occupato(async () => { await accedi(); await chiStato(); await caricaTutto(); }); }
+    try { await occupato(async () => { await accedi(); await chiStato(); if (!S.bootstrap) await caricaTutto(); }); }
     catch (e) { S.pass = ''; $('#eAccesso').textContent = e.message; return; }
     salvaCredenziali(f.ricorda.checked);
     f.pass.value = '';
     mostra('app');
+    if (S.bootstrap) { mostraPagina('pAdmin'); avviso('Imposta la password della placca e crea gli utenti nella scheda Admin', 'ok'); }
   }
   function esci() {
     fermaLettura();
@@ -1381,8 +1390,10 @@ body[data-ruolo="user"] .solo-admin { display: none !important; }
     if (c) {
       S.user = c.user; S.pass = c.pass;
       $('#fAccesso').user.value = c.user;
-      try { await occupato(async () => { await accedi(); await chiStato(); await caricaTutto(); }); mostra('app'); return; }
-      catch (e) { S.pass = ''; $('#eAccesso').textContent = e.message; }
+      try {
+        await occupato(async () => { await accedi(); await chiStato(); if (!S.bootstrap) await caricaTutto(); });
+        mostra('app'); if (S.bootstrap) mostraPagina('pAdmin'); return;
+      } catch (e) { S.pass = ''; $('#eAccesso').textContent = e.message; }
     }
     mostra('accesso');
   }

@@ -264,6 +264,13 @@
 'use strict';
 (function(){
   const $=s=>document.querySelector(s);
+  // incorniciato dentro la scheda Admin della pagina /: niente intestazione doppia
+  if(location.search.indexOf('incorniciato=1')>=0 || window.top!==window.self){
+    const b=document.querySelector('.barra'); if(b) b.style.display='none';
+    document.body.style.background='transparent';
+    const m=document.querySelector('main'); if(m) m.style.padding='0';
+    const lo=document.querySelector('#bLogout'); if(lo){ const s=lo.closest('section'); if(s) s.style.display='none'; }
+  }
   const CGI='/api.cgi';                    // assoluto: la pagina puo' stare su /admin o /data/pin/admin.html
   let placcaSid='';
   let pubblico='';                        // hostname del tunnel, per il link "raggiungibile qui"
