@@ -879,7 +879,7 @@ class Gestore(http.server.BaseHTTPRequestHandler):
         self.send_header('Content-Length', str(len(corpo)))
         self.send_header('Cache-Control', 'no-store')
         self.send_header('X-Content-Type-Options', 'nosniff')
-        self.send_header('X-Frame-Options', 'SAMEORIGIN')   # la scheda Admin incornicia /pannello
+        self.send_header('X-Frame-Options', 'DENY')
         self.send_header('Referrer-Policy', 'no-referrer')
         for k, v in (extra or {}).items():
             self.send_header(k, v)
@@ -902,13 +902,9 @@ class Gestore(http.server.BaseHTTPRequestHandler):
         if p in ('/', '/index.html', '/data/pin/', '/data/pin/index.html'):
             return self._pagina(CONF['PAGINA'])
         # il vecchio pannello separato non esiste piu': ora e' la scheda "Admin" dentro /
-        if p in ('/admin', '/admin/', '/admin.html', '/data/pin/admin', '/data/pin/admin.html'):
+        if p in ('/admin', '/admin/', '/admin.html', '/data/pin/admin', '/data/pin/admin.html',
+                 '/pannello', '/pannello.html'):
             return self.manda(302, 'text/plain; charset=utf-8', b'', {'Location': '/'})
-        # il pannello vive incorniciato (iframe) nella scheda Admin: percorso interno
-        if p in ('/pannello', '/pannello.html'):
-            if CONF['ADMIN_LAN_ONLY'] == '1' and self.headers.get('Cf-Connecting-Ip'):
-                return self.manda(403, 'text/plain; charset=utf-8', b'il pannello admin si apre solo da casa\n')
-            return self._pagina(CONF['ADMIN_PAGINA'])
         if p == '/manifest.webmanifest':
             return self.manda(200, 'application/manifest+json; charset=utf-8', MANIFEST)
         if p == '/sw.js':

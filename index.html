@@ -162,6 +162,11 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
 .avviso.ok { border-left-color: var(--ok); }
 .avviso.err { border-left-color: var(--danger); }
 body[data-ruolo="user"] .solo-admin { display: none !important; }
+#pAdmin details { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 10px; }
+#pAdmin summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+#pAdmin #rReti .btn { display: block; width: 100%; text-align: left; margin-top: 6px; }
+#aggOutPi { white-space: pre-wrap; background: var(--bg); border: 1px solid var(--line);
+  border-radius: 10px; padding: 12px; font-size: 13px; margin-top: 12px; max-height: 40vh; overflow: auto; }
 </style>
 </head>
 <body>
@@ -292,8 +297,118 @@ body[data-ruolo="user"] .solo-admin { display: none !important; }
     </div>
 
     <div id="pAdmin" class="solo-admin" hidden>
-      <iframe id="adminFrame" title="Amministrazione" loading="lazy"
-        style="width:100%;border:0;border-radius:12px;min-height:82vh;background:var(--card)"></iframe>
+      <section class="scheda">
+        <h2>Indirizzi</h2>
+        <form id="fIndirizzi" novalidate>
+          <label>IP della placca <small>(sulla tua rete, es. 192.168.1.90)</small>
+            <input name="placca" inputmode="decimal" placeholder="192.168.1.90"></label>
+          <label>Web del monitor <small>(facoltativo, con https://)</small>
+            <input name="monitor" placeholder="https://192.168.1.80"></label>
+          <label>Indirizzo pubblico del tunnel <small>(hostname su Cloudflare)</small>
+            <input name="pubblico" placeholder="citofono.esempio.com"></label>
+          <p class="errore" id="eIndirizzi" role="alert"></p>
+          <button class="btn primario">Salva indirizzi</button>
+        </form>
+      </section>
+
+      <section class="scheda">
+        <div class="testa"><h2>Relay sul monitor</h2><span id="pStato" class="stato spento">…</span></div>
+        <p class="nota">Nei kit a 2 fili il monitor fa da ponte verso la placca. Il Pi avvia il relay e, se sparisce
+          (riavvio, aggiornamento), lo reinstalla e lo rimette in moto da solo.</p>
+        <p class="nota" id="pInfo"></p>
+        <button id="pVerifica" class="btn piccolo" type="button">Verifica / Avvia relay</button>
+        <form id="fPonte" novalidate style="margin-top:12px">
+          <label>Indirizzo del monitor<input name="mon_host" inputmode="decimal" placeholder="192.168.1.22"></label>
+          <label>Porta telnet del monitor <small>(di solito 9900)</small>
+            <input name="mon_port" inputmode="numeric" placeholder="9900"></label>
+          <label>Utente di manutenzione<input name="mon_user" autocomplete="off" placeholder="root"></label>
+          <label>Password di manutenzione <small>(resta solo sul Pi)</small>
+            <input name="mon_pass" type="password" autocomplete="new-password" placeholder="(vuoto = non cambiarla)"></label>
+          <label>IP della placca <small>(lato 2 fili, es. 192.168.68.70)</small>
+            <input name="placca_ip" inputmode="decimal" placeholder="192.168.68.70"></label>
+          <label>Porta del relay <small>(di solito 8070)</small>
+            <input name="relay_port" inputmode="numeric" placeholder="8070"></label>
+          <p class="errore" id="ePonte" role="alert"></p>
+          <button class="btn primario">Salva relay</button>
+        </form>
+      </section>
+
+      <section class="scheda">
+        <div class="testa"><h2>Rete e Wi-Fi</h2><span id="rStato" class="stato spento">…</span></div>
+        <p class="nota" id="rInfo"></p>
+        <details id="dHotspot">
+          <summary>Hotspot di soccorso — configuralo prima che serva</summary>
+          <p class="nota">Se il Pi resta senza Wi-Fi (password cambiata, trasloco…), accende una sua rete per farti
+            rientrare dal telefono. Senza questo, l’unico recupero è la scheda SD.</p>
+          <form id="fHotspot" novalidate>
+            <label>Nome dell’hotspot<input name="hs_ssid" placeholder="citofono-setup"></label>
+            <label>Password dell’hotspot <small>(almeno 8 caratteri)</small>
+              <input name="hs_pass" type="password" autocomplete="new-password" placeholder="(vuoto = non cambiarla)"></label>
+            <p class="errore" id="eHotspot" role="alert"></p>
+            <button class="btn piccolo primario">Salva hotspot</button>
+          </form>
+        </details>
+        <details id="dWifi">
+          <summary>Cambia rete Wi-Fi</summary>
+          <button id="rScan" class="btn piccolo" type="button">Cerca reti</button>
+          <div id="rReti"></div>
+          <form id="fWifi" novalidate>
+            <label>Rete<input name="ssid" placeholder="nome della rete"></label>
+            <label>Password<input name="wifi_pass" type="password" autocomplete="off"></label>
+            <p class="nota">Applica-sicuro: se la nuova rete non ha Internet, il Pi torna da solo a quella di prima entro ~1 minuto.</p>
+            <p class="errore" id="eWifi" role="alert"></p>
+            <button class="btn piccolo primario">Collega</button>
+          </form>
+        </details>
+      </section>
+
+      <section class="scheda">
+        <h2>Pagina dei PIN — chi può entrare</h2>
+        <p class="nota">La pagina ha utenti propri, separati da placca e monitor. Il Pi entra nella placca con la
+          password qui sotto; gli utenti accedono con nome e password propri.</p>
+        <form id="fPlaccaCred" novalidate>
+          <label>Password della placca <small>(usata dal Pi) — <span id="uPlacca" class="stato spento">…</span></small>
+            <input name="placca_pass" type="password" autocomplete="off" placeholder="(vuoto = lasciala com’è)"></label>
+          <p class="errore" id="ePlaccaCred" role="alert"></p>
+          <button class="btn piccolo primario">Salva password placca</button>
+        </form>
+        <div style="margin-top:16px">
+          <strong>Utenti della pagina</strong>
+          <div id="uLista" class="nota">…</div>
+          <form id="fUtente" novalidate>
+            <label>Nome utente<input name="pin_user" autocomplete="off" placeholder="es. mario"></label>
+            <label>Password <small>(almeno 6 caratteri)</small>
+              <input name="pin_pass" type="password" autocomplete="new-password"></label>
+            <label>Ruolo
+              <select name="ruolo">
+                <option value="user">utente — vede e cambia solo i PIN che gli assegni</option>
+                <option value="admin">gestore — accede anche all’Admin e gestisce tutto</option>
+              </select></label>
+            <p class="errore" id="eUtente" role="alert"></p>
+            <button class="btn piccolo primario">Aggiungi utente</button>
+          </form>
+        </div>
+      </section>
+
+      <section class="scheda">
+        <h2>Password dell’Admin</h2>
+        <p class="nota">La password di un account gestore si cambia qui sotto (vale anche per l’accesso all’Admin).</p>
+        <form id="fCred" novalidate>
+          <label>Utente gestore <small>(lettere e cifre)</small><input name="utente" autocomplete="username"></label>
+          <label>Nuova password <small>(almeno 12 caratteri)</small>
+            <input name="password" type="password" autocomplete="new-password"></label>
+          <label>Ripeti password<input name="ripeti" type="password" autocomplete="new-password"></label>
+          <p class="errore" id="eCred" role="alert"></p>
+          <button class="btn piccolo primario">Salva account gestore</button>
+        </form>
+      </section>
+
+      <section class="scheda">
+        <h2>Aggiornamento</h2>
+        <p class="nota">Scarica l'ultima versione dal repository e riavvia. Il Pi lo fa anche da solo ogni notte.</p>
+        <button id="bAggiornaPi" class="btn piccolo" type="button">Aggiorna adesso</button>
+        <pre id="aggOutPi" hidden></pre>
+      </section>
     </div>
   </section>
 </main>
@@ -1183,7 +1298,7 @@ body[data-ruolo="user"] .solo-admin { display: none !important; }
     ['pCodici', 'pImpostazioni', 'pAdmin'].forEach((p) => { $('#' + p).hidden = p !== id; });
     document.querySelectorAll('.scheda-btn').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.pagina === id)));
     if (id === 'pImpostazioni') prova(() => tunnel('stato'));
-    if (id === 'pAdmin') { const fr = $('#adminFrame'); if (!fr.src) fr.src = '/pannello?incorniciato=1'; }
+    if (id === 'pAdmin') caricaAdmin();
   }
   async function tunnel(azione, extra) {
     const t = await conSessione(Object.assign({ op: 'tunnel', azione: azione }, extra || {}));
@@ -1289,10 +1404,154 @@ body[data-ruolo="user"] .solo-admin { display: none !important; }
     } catch (e) { err.textContent = e.message; return; }
     f.reset();
     if (dev === 'placca') {                 // senza account la pagina rientra con la nuova password
-      S.pass = nuova; S.sid = '';           // con account la password della placca va aggiornata anche in /admin
+      S.pass = nuova; S.sid = '';           // con account la pagina rientra; la placca memorizzata va aggiornata
       if (leggiCredenziali()) salvaCredenziali(ricordato());
+      try { await invia({ op: 'admin_placca_pass', placca_pass: nuova }); } catch (e) { /* non gestore o non disponibile */ }
     }
     avviso('Password ' + (dev === 'monitor' ? 'del monitor' : 'della placca') + ' cambiata', 'ok');
+  }
+
+  // ---------- scheda Admin (configurazione del Pi) ----------
+  async function caricaAdmin() {
+    try {
+      const s = json(await invia({ op: 'admin_state' }));
+      $('#fIndirizzi').placca.value = s.placca || '';
+      $('#fIndirizzi').monitor.value = s.monitor || '';
+      $('#fIndirizzi').pubblico.value = s.pubblico || '';
+      disegnaRelay(s.ponte);
+    } catch (e) { avviso(e.message, 'err'); }
+    caricaReteAdmin();
+    caricaUtentiAdmin();
+  }
+  function disegnaRelay(p) {
+    const st = $('#pStato'), info = $('#pInfo'), f = $('#fPonte');
+    if (!p) { st.textContent = 'n/d'; st.className = 'stato spento'; info.textContent = 'modulo relay non disponibile'; return; }
+    if (!f.mon_host.value) f.mon_host.value = p.mon_host || '';
+    if (!f.mon_port.value) f.mon_port.value = p.mon_port || '9900';
+    if (!f.mon_user.value) f.mon_user.value = p.mon_user || 'root';
+    if (!f.placca_ip.value) f.placca_ip.value = p.placca_ip || '';
+    if (!f.relay_port.value) f.relay_port.value = p.relay_port || '8070';
+    st.textContent = p.attivo ? 'attivo' : 'fermo'; st.className = 'stato ' + (p.attivo ? 'acceso' : 'spento');
+    info.textContent = !p.pass_impostata ? 'imposta le credenziali del monitor qui sotto'
+      : (p.attivo ? 'la porta del relay risponde' : 'premi «Verifica / Avvia relay»');
+  }
+  async function caricaReteAdmin() {
+    try { disegnaReteAdmin(json(await invia({ op: 'admin_rete_state' }))); } catch (e) { disegnaReteAdmin(null); }
+  }
+  function disegnaReteAdmin(r) {
+    const st = $('#rStato'), info = $('#rInfo');
+    if (!r || !r.nm) { st.textContent = 'n/d'; st.className = 'stato spento';
+      info.textContent = 'NetworkManager non disponibile su questo Pi'; return; }
+    const online = !!r.connesso;
+    st.textContent = online ? 'online' : (r.hotspot_attivo ? 'hotspot' : 'offline');
+    st.className = 'stato ' + (online ? 'acceso' : 'spento');
+    const n = [];
+    if (r.wifi_ssid) n.push('Wi-Fi: ' + r.wifi_ssid + (r.wifi_ip ? ' (' + r.wifi_ip + ')' : ''));
+    if (r.eth_ip) n.push('cavo: ' + r.eth_ip);
+    if (r.hotspot_attivo) n.push('HOTSPOT ACCESO (' + (r.hotspot_ssid || 'citofono-setup') + ')');
+    n.push(r.hotspot_ssid ? 'soccorso: hotspot «' + r.hotspot_ssid + '» pronto' : '⚠ hotspot di soccorso NON configurato');
+    n.push(r.guardia ? 'guardia attiva' : 'guardia non attiva');
+    info.textContent = n.join(' · ');
+    const f = $('#fHotspot'); if (f && !f.hs_ssid.value) f.hs_ssid.value = r.hotspot_ssid || 'citofono-setup';
+  }
+  async function caricaUtentiAdmin() {
+    let r;
+    try { r = json(await invia({ op: 'admin_utenti' })); } catch (e) { $('#uLista').textContent = '(non disponibile)'; return; }
+    const badge = $('#uPlacca');
+    badge.textContent = r.placca_impostata ? 'impostata' : 'non impostata';
+    badge.className = 'stato ' + (r.placca_impostata ? 'acceso' : 'spento');
+    const box = $('#uLista'); box.textContent = '';
+    if (!r.utenti || !r.utenti.length) { box.textContent = 'Nessun utente: la pagina chiede direttamente la password della placca.'; return; }
+    r.utenti.forEach((u) => {
+      const row = el('div', 'riga'); row.style.marginTop = '8px';
+      const nome = el('span', null, u.user); nome.style.flex = '1';
+      const tag = el('span', 'stato ' + (u.ruolo === 'admin' ? 'acceso' : 'spento'), u.ruolo === 'admin' ? 'gestore' : 'utente');
+      const del = bottone('Rimuovi', () => {
+        if (!confirm('Rimuovere l’utente «' + u.user + '»?')) return;
+        prova(async () => { await invia({ op: 'admin_utente_del', pin_user: u.user }); await caricaUtentiAdmin(); }, 'Utente rimosso');
+      }, 'pericolo');
+      row.append(nome, tag, del); box.append(row);
+    });
+  }
+  async function salvaIndirizzi(ev) {
+    ev.preventDefault(); const f = ev.currentTarget; $('#eIndirizzi').textContent = '';
+    const pu = f.pubblico.value.trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    try { await occupato(() => invia({ op: 'admin_save', placca: f.placca.value.trim(), monitor: f.monitor.value.trim(), pubblico: pu })); }
+    catch (e) { $('#eIndirizzi').textContent = e.message; return; }
+    await caricaAdmin(); avviso('Indirizzi salvati', 'ok');
+  }
+  async function verificaRelay() {
+    const b = $('#pVerifica'); b.disabled = true; const t = b.textContent; b.textContent = 'Attendere…';
+    try { const r = json(await invia({ op: 'admin_relay' })); await caricaAdmin(); avviso(r.esito || 'Relay a posto', 'ok'); }
+    catch (e) { avviso(e.message, 'err'); } finally { b.disabled = false; b.textContent = t; }
+  }
+  async function salvaRelay(ev) {
+    ev.preventDefault(); const f = ev.currentTarget; $('#ePonte').textContent = '';
+    try { await occupato(() => invia({ op: 'admin_relay_save', mon_host: f.mon_host.value.trim(), mon_port: f.mon_port.value.trim(),
+      mon_user: f.mon_user.value.trim(), mon_pass: f.mon_pass.value, placca_ip: f.placca_ip.value.trim(), relay_port: f.relay_port.value.trim() })); }
+    catch (e) { $('#ePonte').textContent = e.message; return; }
+    f.mon_pass.value = ''; await caricaAdmin(); avviso('Relay salvato', 'ok');
+  }
+  async function scanWifi() {
+    const b = $('#rScan'); b.disabled = true; const t = b.textContent; b.textContent = 'Cerco…';
+    try {
+      const reti = json(await invia({ op: 'admin_wifi_scan' })); const box = $('#rReti'); box.textContent = '';
+      if (!reti.length) { box.textContent = 'Nessuna rete trovata.'; return; }
+      reti.forEach((x) => {
+        const e2 = el('button', 'btn piccolo'); e2.type = 'button';
+        e2.textContent = (x.in_uso ? '✓ ' : '') + x.ssid + '  (' + x.segnale + '%' + (x.sicurezza ? ' · ' + x.sicurezza : ' · aperta') + ')';
+        e2.addEventListener('click', () => { $('#fWifi').ssid.value = x.ssid; $('#fWifi').wifi_pass.focus(); });
+        box.append(e2);
+      });
+    } catch (e) { avviso(e.message, 'err'); } finally { b.disabled = false; b.textContent = t; }
+  }
+  async function connettiWifi(ev) {
+    ev.preventDefault(); const f = ev.currentTarget; $('#eWifi').textContent = ''; const ssid = f.ssid.value.trim();
+    if (!ssid) { $('#eWifi').textContent = 'Scegli o scrivi una rete'; return; }
+    if (!confirm('Collego il Pi a «' + ssid + '».\nSe la rete non funziona, torna da sola a quella di prima entro ~1 minuto.\nProcedo?')) return;
+    try { await occupato(() => invia({ op: 'admin_wifi_connect', ssid: ssid, wifi_pass: f.wifi_pass.value })); }
+    catch (e) { $('#eWifi').textContent = e.message; return; }
+    f.wifi_pass.value = ''; avviso('Sto provando «' + ssid + '». Se il Pi cambia indirizzo potresti doverti riconnettere.', 'ok');
+  }
+  async function salvaHotspot(ev) {
+    ev.preventDefault(); const f = ev.currentTarget; $('#eHotspot').textContent = '';
+    if (!f.hs_ssid.value.trim()) { $('#eHotspot').textContent = 'Scrivi un nome per l’hotspot'; return; }
+    try { await occupato(() => invia({ op: 'admin_hotspot_save', hs_ssid: f.hs_ssid.value.trim(), hs_pass: f.hs_pass.value })); }
+    catch (e) { $('#eHotspot').textContent = e.message; return; }
+    f.hs_pass.value = ''; await caricaReteAdmin(); avviso('Hotspot di soccorso configurato', 'ok');
+  }
+  async function salvaCredGestore(ev) {
+    ev.preventDefault(); const f = ev.currentTarget, err = $('#eCred');
+    if (!/^[0-9A-Za-z]{1,32}$/.test(f.utente.value)) { err.textContent = 'Utente: lettere e cifre'; return; }
+    if (f.password.value.length < 12) { err.textContent = 'La password deve avere almeno 12 caratteri'; return; }
+    if (f.password.value !== f.ripeti.value) { err.textContent = 'Le due password non coincidono'; return; }
+    err.textContent = '';
+    try { await occupato(() => invia({ op: 'admin_cred', nuovo_user: f.utente.value, nuova_pass: f.password.value })); }
+    catch (e) { err.textContent = e.message; return; }
+    f.reset(); await caricaUtentiAdmin(); avviso('Account gestore salvato', 'ok');
+  }
+  async function salvaPlaccaPass(ev) {
+    ev.preventDefault(); const f = ev.currentTarget; $('#ePlaccaCred').textContent = '';
+    if (!f.placca_pass.value) { $('#ePlaccaCred').textContent = 'Scrivi la password della placca'; return; }
+    try { await occupato(() => invia({ op: 'admin_placca_pass', placca_pass: f.placca_pass.value })); }
+    catch (e) { $('#ePlaccaCred').textContent = e.message; return; }
+    f.reset(); await caricaUtentiAdmin(); avviso('Password della placca salvata', 'ok');
+  }
+  async function aggiungiUtente(ev) {
+    ev.preventDefault(); const f = ev.currentTarget, err = $('#eUtente');
+    if (!/^[0-9A-Za-z._-]{1,32}$/.test(f.pin_user.value)) { err.textContent = 'Nome utente: lettere, cifre, . _ -'; return; }
+    if (f.pin_pass.value.length < 6) { err.textContent = 'La password: almeno 6 caratteri'; return; }
+    err.textContent = '';
+    try { await occupato(() => invia({ op: 'admin_utente_add', pin_user: f.pin_user.value, pin_pass: f.pin_pass.value, ruolo: f.ruolo.value })); }
+    catch (e) { err.textContent = e.message; return; }
+    f.reset(); await caricaUtentiAdmin(); try { await chiStato(); } catch (e) { /* aggiorna lista assegnabili */ }
+    avviso('Utente aggiunto', 'ok');
+  }
+  async function aggiornaPi() {
+    if (!confirm('Scaricare l\'ultima versione e riavviare?')) return;
+    const out = $('#aggOutPi'); out.hidden = false; out.textContent = 'Aggiornamento in corso…';
+    try { out.textContent = (await invia({ op: 'admin_update' })).trim() + '\n\nRiavvio: tra qualche secondo ricarica la pagina.'; }
+    catch (e) { out.textContent = e.message; }
   }
 
   // ---------- accesso ----------
@@ -1366,6 +1625,16 @@ body[data-ruolo="user"] .solo-admin { display: none !important; }
     $('#tAggiorna').addEventListener('click', () => prova(() => tunnel('stato')));
     $('#fToken').addEventListener('submit', salvaToken);
     document.querySelectorAll('.fPassword').forEach((f) => f.addEventListener('submit', salvaPassword));
+    $('#fIndirizzi').addEventListener('submit', salvaIndirizzi);
+    $('#pVerifica').addEventListener('click', verificaRelay);
+    $('#fPonte').addEventListener('submit', salvaRelay);
+    $('#rScan').addEventListener('click', scanWifi);
+    $('#fWifi').addEventListener('submit', connettiWifi);
+    $('#fHotspot').addEventListener('submit', salvaHotspot);
+    $('#fCred').addEventListener('submit', salvaCredGestore);
+    $('#fPlaccaCred').addEventListener('submit', salvaPlaccaPass);
+    $('#fUtente').addEventListener('submit', aggiungiUtente);
+    $('#bAggiornaPi').addEventListener('click', aggiornaPi);
     $('#fFisso').addEventListener('submit', salvaFisso);
     $('#fFisso').addEventListener('input', aggiornaFisso);
     $('#bCopia').addEventListener('click', copia);

@@ -46,7 +46,6 @@ if [ ! -s "$ETC/citofono.conf" ]; then
 fi
 # i percorsi dei file puntano sempre a questo clone (anche se reinstalli altrove)
 sed -i "s#^PAGINA=.*#PAGINA=$APP/index.html#" "$ETC/citofono.conf"
-sed -i "s#^ADMIN_PAGINA=.*#ADMIN_PAGINA=$APP/admin.html#" "$ETC/citofono.conf"
 sed -i "s#^APP_DIR=.*#APP_DIR=$APP#" "$ETC/citofono.conf"
 
 echo "== password del pannello admin =="
