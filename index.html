@@ -109,6 +109,19 @@ legend { padding: 0; font-size: 14px; color: var(--muted); margin-bottom: 8px; }
 .due { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .riga-pin { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end; }
 .preset { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.riga-tessera { display: grid; grid-template-columns: 1fr auto auto auto; gap: 6px; align-items: center; margin-top: 8px; }
+.riga-tessera.senza-nfc { grid-template-columns: 1fr auto auto; }
+.riga-tessera input { margin-top: 0; }
+.riga-tessera .btn, .riga-letture .btn { min-height: 44px; padding: 8px 10px; font-size: 13px; }
+.riga-occhio { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; margin-top: 8px; }
+.riga-occhio input { margin-top: 0; }
+.riga-letture { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.riga-letture .btn { flex: 1 1 0; }
+.btn.attivo { background: var(--wait-soft); border-color: var(--wait); color: var(--wait); }
+.lettura { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--off-soft); color: var(--text); }
+.lettura.attesa { background: var(--wait-soft); color: var(--wait); }
+.lettura.ok { background: var(--ok-soft); color: var(--ok); }
+.lettura.err { background: var(--danger-soft); color: var(--danger); }
 
 .elenco { list-style: none; margin: 8px 0 0; padding: 0; }
 .voce { padding: 14px 0; border-top: 1px solid var(--line); }
@@ -199,6 +212,33 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
       <ul id="lFissi" class="elenco"></ul>
     </section>
 
+    <section class="scheda" id="sMaster" hidden>
+      <div class="testa">
+        <h2>Tessera master</h2>
+        <span id="mStato" class="stato spento">…</span>
+      </div>
+      <p class="nota">La tessera di gestione della placca («Master Card»). Il numero si legge passandola
+        sul lettore della placca, appoggiandola al telefono, o digitando il codice del monitor.</p>
+      <form id="fMaster" novalidate>
+        <label class="spunta"><input type="checkbox" name="attiva"> Tessera master attiva</label>
+        <div id="mRiga">
+          <div class="riga-occhio">
+            <input name="numero" type="password" inputmode="numeric" maxlength="20" autocomplete="off" placeholder="Numero della tessera" aria-label="Numero della tessera master">
+            <button type="button" class="btn piccolo" id="mOcchio" aria-pressed="false" title="Mostra o nascondi il numero">Mostra</button>
+          </div>
+          <div class="riga-letture">
+            <button type="button" class="btn bPlacca" title="Leggi col lettore della placca">Placca</button>
+            <button type="button" class="btn bNfc" title="Leggi appoggiando la tessera al telefono">NFC</button>
+            <button type="button" class="btn bCodice" title="Digita il codice che mostra il monitor">Codice</button>
+          </div>
+        </div>
+        <p class="nota lettura" id="lMaster" role="status" hidden></p>
+        <p class="errore" id="eMaster" role="alert"></p>
+        <div class="bottoni"><button class="btn primario">Salva</button></div>
+      </form>
+      <p class="nota" id="nNfc"></p>
+    </section>
+
     <p class="nota centro">Date e orari seguono l'orologio della placca: controlla che sia giusto.
       <button id="bAggiorna" class="link" type="button">Aggiorna</button></p>
     </div>
@@ -260,6 +300,11 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
       <button id="bGenera" class="btn" type="button">Genera</button>
     </div>
     <p class="nota" id="nPin" hidden></p>
+    <fieldset>
+      <legend>Tessere RFID (fino a 3) · con una tessera il codice è facoltativo</legend>
+      <div id="tessere"></div>
+      <p class="nota lettura" id="lTessera" role="status" hidden></p>
+    </fieldset>
     <fieldset>
       <legend>Apre il relè</legend>
       <div class="scelte">
@@ -354,7 +399,7 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
   const GIORNI = [[1, 'L', 'lunedì'], [2, 'M', 'martedì'], [3, 'M', 'mercoledì'], [4, 'G', 'giovedì'],
     [5, 'V', 'venerdì'], [6, 'S', 'sabato'], [0, 'D', 'domenica']];
   const BREVI = ['dom', 'lun', 'mar', 'mer', 'gio', 'ven', 'sab'];
-  const S = { user: 'admin', hash: '', sid: '', persone: [], fissi: [], mostra: false, persona: null, fisso: null };
+  const S = { user: 'admin', hash: '', sid: '', persone: [], fissi: [], card: null, mostra: false, persona: null, fisso: null };
 
   // ---------- md5 (la placca vuole md5 della password; il browser non lo offre) ----------
   function md5(testo) {
@@ -471,7 +516,15 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
     S.fissi = [];
     for (let i = 0; i < max; i++) S.fissi.push({ index: i, pin: String(d['p_' + i + '_password'] || ''), rele: String(d['p_' + i + '_relays'] || '') });
   }
-  async function caricaTutto() { await caricaPersone(); await caricaFissi(); disegna(); }
+  // impostazioni tessere della placca (api=card): tessera master e modalita' Mifare
+  async function caricaTessere() {
+    try {
+      const j = await chiama('card');
+      const d = j && j.data && typeof j.data === 'object' ? j.data : j;
+      S.card = d && typeof d === 'object' && d.enable !== undefined ? d : null;
+    } catch (e) { if (e instanceof ErroreAccesso) throw e; S.card = null; }
+  }
+  async function caricaTutto() { await caricaPersone(); await caricaFissi(); await caricaTessere(); disegna(); }
 
   // prima di modificare/cancellare: la riga e' ancora quella? (qualcun altro puo' aver cambiato l'elenco)
   async function controllaPersona(p) {
@@ -595,7 +648,9 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
       const r1 = el('div', 'riga');
       r1.append(el('strong', 'nome', p.nome || '(senza nome)'), el('span', 'stato ' + classe, stato));
       const r2 = el('div', 'dettagli');
-      r2.append(p.pin ? el('span', 'codice', nascondi(p.pin)) : el('span', null, 'nessun codice'), ' · ' + testoRele(p.rele));
+      const nt = tessereDi(p).length;
+      r2.append(p.pin ? el('span', 'codice', nascondi(p.pin)) : el('span', null, 'nessun codice'),
+        (nt ? ' · ' + (nt === 1 ? '1 tessera' : nt + ' tessere') : '') + ' · ' + testoRele(p.rele));
       const az = el('div', 'azioni');
       if (p.pin) az.append(bottone('Condividi', () => apriCondividi(p)));
       if (!inGruppo) {
@@ -627,6 +682,7 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
   function disegna() {
     disegnaPersone();
     disegnaFissi();
+    disegnaMaster();
     const b = $('#bMostra');
     b.textContent = S.mostra ? 'Nascondi codici' : 'Mostra codici';
     b.setAttribute('aria-pressed', String(S.mostra));
@@ -666,15 +722,21 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
     f.usi.value = p && p.pass_on === '1' ? p.usi : '1';
     f.attivo.checked = !p || p.stato === '1';
     $('#boxAttivo').hidden = !p;
+    const ts = tessereDi(p);
+    f.querySelectorAll('input[name=tessera]').forEach((i, n) => { i.value = ts[n] || ''; });
+    statoLettura($('#lTessera'), '');
     aggiornaModulo();
     $('#dPersona').showModal();
   }
-  function problemaPersona(f, p, nome, pin, rele, temp) {
+  function problemaPersona(f, p, nome, pin, rele, temp, tessere) {
     if (!nome) return 'Scrivi un nome';
     if (!/^[\p{L}\p{N} .'()_-]+$/u.test(nome)) return "Nel nome usa solo lettere, numeri, spazi e . ' ( ) - _";
     if (S.persone.some((x) => x !== p && x.nome === nome)) return 'Esiste già un codice con questo nome';
-    if (!/^\d{4,8}$/.test(pin)) return 'Il codice deve avere da 4 a 8 cifre';
-    if (pinUsati(p).includes(pin)) return 'Questo codice è già usato da una persona o da un PIN fisso';
+    if (!pin && !tessere.length) return 'Scrivi un codice o aggiungi una tessera';
+    if (pin && !/^\d{4,8}$/.test(pin)) return 'Il codice deve avere da 4 a 8 cifre';
+    if (pin && pinUsati(p).includes(pin)) return 'Questo codice è già usato da una persona o da un PIN fisso';
+    const t = problemaTessere(p, tessere);
+    if (t) return t;
     if (!rele.length) return 'Scegli almeno un relè';
     if (temp) {
       if (!f.dal.value || !f.al.value) return 'Indica le date di inizio e di fine';
@@ -691,14 +753,15 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
     const f = ev.currentTarget, p = S.persona, err = $('#ePersona');
     const nome = f.nome.value.trim(), pin = f.pin.value.trim(), temp = f.tipo.value === 'temp';
     const rele = Array.from(f.querySelectorAll('input[name=rele]:checked'), (i) => i.value);
-    err.textContent = problemaPersona(f, p, nome, pin, rele, temp);
+    const tessere = Array.from(f.querySelectorAll('input[name=tessera]'), (i) => i.value.trim()).filter(Boolean);
+    err.textContent = problemaPersona(f, p, nome, pin, rele, temp, tessere);
     if (err.textContent) return;
     // per una persona esistente si conservano i campi che questa pagina non mostra (stanza, tessere...)
     const dati = {
       action: p ? '2' : '1', group: p ? p.gruppo : '-1', name: nome,
       room: p && p.stanza !== '-1' ? p.stanza : '', relays: rele.join(';'),
       status: !p || f.attivo.checked ? '1' : '0', type: p && p.tipo ? p.tipo : '0',
-      cards: p && p.tessere !== 'None' ? p.tessere : '', pin_mode: '1', pin_code: pin,
+      cards: tessere.join(';'), pin_mode: pin ? '1' : '0', pin_code: pin,
       pass_enable: f.limita.checked ? '1' : '0', active_enable: temp ? '1' : '0'
     };
     if (p) dati.index = String(p.index);
@@ -714,7 +777,7 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
     } catch (e) { err.textContent = e.message; return; }
     $('#dPersona').close();
     const nuovo = S.persone.find((x) => x.nome === nome && x.pin === pin);
-    if (!p && nuovo) apriCondividi(nuovo); else avviso('Salvato', 'ok');
+    if (!p && nuovo && pin) apriCondividi(nuovo); else avviso('Salvato', 'ok');
   }
   // la persona cosi' com'e' sulla placca, con il solo stato cambiato
   function datiPersona(p, stato) {
@@ -743,6 +806,241 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
       await scrivi('user', { action: '0', group: '-1', index: String(p.index) });
       await caricaTutto();
     }, 'Codice eliminato');
+  }
+
+  // ---------- tessere RFID ----------
+  // La placca salva il numero della tessera in decimale (la sua web app fa parseInt di quanto
+  // legge il lettore). Due modi per leggerlo:
+  //  - lettore della placca: api=card action 0 avvia, 1 chiede la tessera letta, 2 chiude (max 30 s);
+  //  - NFC del telefono (Web NFC, solo Chrome su Android): da' l'UID della tessera, che va convertito
+  //    nel numero della placca. Il modo di convertire si scopre una volta, confrontando la stessa
+  //    tessera letta dai due lati (taratura), e resta salvato in questo browser.
+  const NFC_OK = 'NDEFReader' in window;
+  const CHIAVE_NFC = 'citofono-nfc-formato';
+  // candidati di conversione UID -> numero della placca. La pagina sceglie da sola
+  // quello giusto confrontando una tessera letta da due lati (taratura). Il primo che
+  // combacia vince; l'ordine mette per primo il piu' probabile (firmware: primi 4 byte
+  // a rovescio). Funziona sia con UID a 4 byte sia a 6/7.
+  const FORMATI = {
+    le4: ['primi 4 byte a rovescio', (b) => b.slice(0, 4).reverse()],
+    be4: ['primi 4 byte in ordine', (b) => b.slice(0, 4)],
+    le4u: ['ultimi 4 byte a rovescio', (b) => b.slice(-4).reverse()],
+    be4u: ['ultimi 4 byte in ordine', (b) => b.slice(-4)],
+    le: ['tutto UID a rovescio', (b) => b.slice().reverse()],
+    be: ['tutto UID in ordine', (b) => b],
+    le3: ['primi 3 byte a rovescio, Wiegand 26', (b) => b.slice(0, 3).reverse()],
+    be3: ['ultimi 3 byte, Wiegand 26', (b) => b.slice(-3)]
+  };
+  function numeroDa(bytes) { let n = 0n; for (const x of bytes) n = n * 256n + BigInt(x); return n.toString(); }
+  function formatoNfc() {
+    try { const v = archivio('localStorage').getItem(CHIAVE_NFC); return FORMATI[v] ? v : ''; } catch (e) { return ''; }
+  }
+  function salvaFormatoNfc(v) {
+    try { const a = archivio('localStorage'); if (v) a.setItem(CHIAVE_NFC, v); else a.removeItem(CHIAVE_NFC); } catch (e) { /* non salvabile */ }
+  }
+  function tessereDi(p) { return p && p.tessere && p.tessere !== 'None' ? p.tessere.split(';').map((t) => t.trim()).filter(Boolean) : []; }
+  const mifare = () => !!S.card && String(S.card.mifare_enable) === '1';
+  const masterAttiva = () => !!S.card && String(S.card.enable) === '1' && String(S.card.admin_card || '') !== '';
+  function problemaTessere(p, tessere) {
+    for (const t of tessere) if (!/^\d{1,20}$/.test(t)) return 'Numero di tessera non valido: solo cifre';
+    if (new Set(tessere).size !== tessere.length) return 'La stessa tessera è inserita due volte';
+    for (const t of tessere) {
+      const chi = S.persone.find((x) => x !== p && tessereDi(x).includes(t));
+      if (chi) return 'La tessera ' + t + ' è già di "' + chi.nome + '"';
+      if (masterAttiva() && String(S.card.admin_card) === t) return 'La tessera ' + t + ' è la tessera master';
+    }
+    return '';
+  }
+  function statoLettura(box, testo, tipo) {
+    box.textContent = testo || '';
+    box.className = 'nota lettura' + (tipo ? ' ' + tipo : '');
+    box.hidden = !testo;
+  }
+
+  let lettura = null;                      // lettura in corso (una sola alla volta)
+  function fermaLettura() { if (lettura) lettura.fine(); }
+  function leggiPlacca() {
+    return new Promise((ok, ko) => {
+      let finito = false, giri = 0, timer = 0;
+      const chiudi = (v, e) => {
+        if (finito) return;
+        finito = true; clearTimeout(timer); lettura = null;
+        chiama('card', { action: '2' }).catch(() => {});
+        if (e) ko(e); else ok(v);
+      };
+      lettura = { fine: () => chiudi(null) };
+      const giro = async () => {
+        if (finito) return;
+        if (giri++ >= 60) return chiudi(null, new Error('Nessuna tessera letta in 30 secondi'));
+        try {
+          const j = await chiama('card', { action: '1' });
+          const d = j && j.data && typeof j.data === 'object' ? j.data : j;
+          const c = d && d.card !== undefined && d.card !== null ? String(d.card).trim() : '';
+          if (/^\d+$/.test(c)) return chiudi(c.replace(/^0+(?=\d)/, ''));
+        } catch (e) { return chiudi(null, e); }
+        if (!finito) timer = setTimeout(giro, 500);
+      };
+      chiama('card', { action: '0' }).then(() => { if (!finito) timer = setTimeout(giro, 500); }, (e) => chiudi(null, e));
+    });
+  }
+  function leggiNfc() {
+    return new Promise((ok, ko) => {
+      const ac = new AbortController();
+      let finito = false, t = 0;
+      const chiudi = (v, e) => {
+        if (finito) return;
+        finito = true; clearTimeout(t); ac.abort(); lettura = null;
+        if (e) ko(e); else ok(v);
+      };
+      t = setTimeout(() => chiudi(null, new Error('Nessuna tessera letta in 30 secondi')), 30000);
+      lettura = { fine: () => chiudi(null) };
+      let r;
+      try { r = new NDEFReader(); } catch (e) { return chiudi(null, new Error('NFC non disponibile su questo browser')); }
+      r.onreading = (ev) => {
+        const b = String(ev.serialNumber || '').split(':').filter(Boolean).map((x) => parseInt(x, 16));
+        if (!b.length || b.some(isNaN)) return chiudi(null, new Error('Il telefono non ha letto il numero della tessera: usa il lettore della placca'));
+        chiudi(b);
+      };
+      r.onreadingerror = () => chiudi(null, new Error('Il telefono sente la tessera ma non riesce a leggerla (tipo non supportato dal browser): usa il lettore della placca'));
+      r.scan({ signal: ac.signal }).catch((e) => {
+        if (finito) return;
+        chiudi(null, new Error(e && e.name === 'NotAllowedError' ? 'Permesso NFC negato: consentilo nelle impostazioni del sito'
+          : e && e.name === 'NotReadableError' ? 'NFC spento: attivalo nelle impostazioni del telefono'
+          : 'NFC non disponibile su questo telefono'));
+      });
+    });
+  }
+  // dal telefono: la prima volta si tara il formato confrontando con la placca
+  async function tesseraDaNfc(box) {
+    statoLettura(box, 'Appoggia la tessera sul retro del telefono…', 'attesa');
+    const b = await leggiNfc();
+    if (!b) return null;
+    const fmt = formatoNfc();
+    if (fmt) return numeroDa(FORMATI[fmt][1](b));
+    statoLettura(box, 'Letta. Solo la prima volta: passa ora la stessa tessera sul lettore della placca, per tarare il formato…', 'attesa');
+    const n = await leggiPlacca();
+    if (!n) return null;
+    const giusto = Object.keys(FORMATI).find((k) => numeroDa(FORMATI[k][1](b)) === n);
+    if (!giusto) {
+      throw new Error('Il numero letto dalla placca (' + n + ') non corrisponde a quello del telefono: per le tessere usa il pulsante "Placca"');
+    }
+    salvaFormatoNfc(giusto);
+    disegnaMaster();
+    return n;
+  }
+  // i 6 gruppi esadecimali che mostra il monitor -> byte (accetta A1:B2:.., A1 B2.., A1B2..)
+  function codiceInByte(str) {
+    const hex = String(str).replace(/0x/ig, '').replace(/[^0-9a-fA-F]/g, '');
+    if (hex.length < 2 || hex.length % 2) return null;
+    const b = [];
+    for (let i = 0; i < hex.length; i += 2) b.push(parseInt(hex.substr(i, 2), 16));
+    return b.some(isNaN) ? null : b;
+  }
+  // digitando il codice del monitor: stessa conversione dell'NFC (stessa taratura)
+  async function tesseraDaCodice(box) {
+    const str = prompt('Codice della tessera come lo mostra il monitor\n(es. A1:B2:C3:D4:E5:F6):');
+    if (str === null) return null;
+    const b = codiceInByte(str);
+    if (!b) throw new Error('Codice non valido: usa le cifre del monitor, es. A1:B2:C3:D4:E5:F6');
+    const fmt = formatoNfc();
+    if (fmt) return numeroDa(FORMATI[fmt][1](b));
+    statoLettura(box, 'Codice preso. Solo la prima volta: passa ora la stessa tessera sul lettore della placca, per imparare la conversione…', 'attesa');
+    const n = await leggiPlacca();
+    if (!n) return null;
+    const giusto = Object.keys(FORMATI).find((k) => numeroDa(FORMATI[k][1](b)) === n);
+    if (!giusto) throw new Error('Il numero della placca (' + n + ') non combacia col codice digitato: controlla di aver inserito il codice giusto, oppure usa "Placca"');
+    salvaFormatoNfc(giusto);
+    disegnaMaster();
+    return n;
+  }
+  async function leggiTessera(input, modo, b, box) {
+    if (lettura) { fermaLettura(); return; }   // il pulsante della lettura in corso fa da "Annulla"
+    const testo = b.textContent;
+    b.textContent = 'Annulla'; b.classList.add('attivo');
+    try {
+      if (modo === 'placca') statoLettura(box, 'Passa la tessera sul lettore della placca (entro 30 secondi)…', 'attesa');
+      const n = modo === 'placca' ? await leggiPlacca() : modo === 'codice' ? await tesseraDaCodice(box) : await tesseraDaNfc(box);
+      if (n === null) { statoLettura(box, 'Lettura annullata'); return; }
+      input.value = n;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      statoLettura(box, 'Tessera letta: ' + n, 'ok');
+    } catch (e) { statoLettura(box, e.message || String(e), 'err'); }
+    finally { b.textContent = testo; b.classList.remove('attivo'); }
+  }
+  function collegaRiga(riga, box) {
+    const input = riga.querySelector('input');
+    riga.querySelector('.bPlacca').addEventListener('click', (ev) => leggiTessera(input, 'placca', ev.currentTarget, box));
+    const bn = riga.querySelector('.bNfc');
+    if (bn) bn.addEventListener('click', (ev) => leggiTessera(input, 'nfc', ev.currentTarget, box));
+    const bc = riga.querySelector('.bCodice');
+    if (bc) bc.addEventListener('click', (ev) => leggiTessera(input, 'codice', ev.currentTarget, box));
+  }
+  function costruisciTessere() {
+    const box = $('#tessere');
+    for (let n = 1; n <= 3; n++) {
+      const riga = el('div', 'riga-tessera'), i = document.createElement('input');
+      i.name = 'tessera'; i.inputMode = 'numeric'; i.maxLength = 20; i.autocomplete = 'off';
+      i.placeholder = 'Tessera ' + n; i.setAttribute('aria-label', 'Numero tessera ' + n);
+      const bp = el('button', 'btn bPlacca', 'Placca'), bn = el('button', 'btn bNfc', 'NFC'),
+            bc = el('button', 'btn bCodice', 'Codice');
+      bp.type = 'button'; bn.type = 'button'; bc.type = 'button';
+      bp.title = 'Leggi col lettore della placca'; bn.title = 'Leggi appoggiando la tessera al telefono';
+      bc.title = 'Digita il codice che mostra il monitor';
+      riga.append(i, bp, bn, bc);
+      box.append(riga);
+      collegaRiga(riga, $('#lTessera'));
+    }
+    collegaRiga($('#mRiga'), $('#lMaster'));
+  }
+  function disegnaMaster() {
+    const nfc = NFC_OK && !mifare();
+    document.querySelectorAll('.bNfc').forEach((b) => { b.hidden = !nfc; });
+    document.querySelectorAll('.riga-tessera').forEach((r) => r.classList.toggle('senza-nfc', !nfc));
+    $('#sMaster').hidden = !S.card;
+    if (!S.card) return;
+    const on = String(S.card.enable) === '1', st = $('#mStato');
+    st.textContent = on ? 'attiva' : 'spenta';
+    st.className = 'stato ' + (on ? 'acceso' : 'spento');
+    const f = $('#fMaster');
+    if (!f.dataset.sporco) {
+      f.attiva.checked = on;
+      f.numero.value = S.card.admin_card !== undefined && S.card.admin_card !== null ? String(S.card.admin_card) : '';
+    }
+    $('#mRiga').hidden = !f.attiva.checked;
+    const n = $('#nNfc'), fmt = formatoNfc();
+    n.textContent = '';
+    if (!NFC_OK) n.textContent = 'Lettura NFC dal telefono: non disponibile su questo browser (serve Chrome su Android; su iPhone una pagina web non può usare l’NFC). Usa il lettore della placca.';
+    else if (mifare()) n.textContent = 'La placca usa tessere Mifare criptate: il numero si legge solo col lettore della placca.';
+    else if (!fmt) n.textContent = 'NFC del telefono non ancora tarato: alla prima lettura ti chiederò di passare la stessa tessera anche sulla placca.';
+    else {
+      const b = el('button', 'link', 'Rifai la taratura');
+      b.type = 'button';
+      b.addEventListener('click', () => { salvaFormatoNfc(''); disegnaMaster(); avviso('Taratura NFC cancellata', 'ok'); });
+      n.append('NFC del telefono tarato (' + FORMATI[fmt][0] + '). ', b);
+    }
+  }
+  async function salvaMaster(ev) {
+    ev.preventDefault();
+    const f = ev.currentTarget, c = S.card, err = $('#eMaster');
+    err.textContent = '';
+    if (!c) return;
+    const on = f.attiva.checked, n = f.numero.value.trim();
+    if (on && !/^\d{1,20}$/.test(n)) { err.textContent = 'Scrivi o leggi il numero della tessera master'; return; }
+    if (on) {
+      const chi = S.persone.find((x) => tessereDi(x).includes(n));
+      if (chi) { err.textContent = 'Questa tessera è già di "' + chi.nome + '"'; return; }
+    }
+    const v = (x, d) => (x === undefined || x === null ? d : String(x));
+    // come la web app della placca: si rimandano tutti i campi come sono, cambia solo la tessera master
+    const d = { action: '3', enable: on ? '1' : '0', admin_card: on ? n : v(c.admin_card, ''), mifare_enable: v(c.mifare_enable, '0') };
+    if (d.mifare_enable === '1') Object.assign(d, { mifare_block: v(c.mifare_block, ''), mifare_sector: v(c.mifare_sector, ''), mifare_key: v(c.mifare_key, '') });
+    if (c.security !== undefined) d.security = v(c.security, '0');
+    await prova(async () => {
+      const j = await chiama('card', d);
+      if (esito(j) < 0) throw new Error("La placca ha rifiutato l'operazione");
+      delete f.dataset.sporco;
+      await caricaTutto();
+    }, on ? 'Tessera master salvata' : 'Tessera master disattivata');
   }
 
   // ---------- PIN fissi ----------
@@ -952,8 +1250,10 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
     mostra('app');
   }
   function esci() {
+    fermaLettura();
     dimenticaCredenziali();
-    Object.assign(S, { hash: '', sid: '', persone: [], fissi: [], mostra: false });
+    Object.assign(S, { hash: '', sid: '', persone: [], fissi: [], card: null, mostra: false });
+    $('#sMaster').hidden = true;
     $('#lPersone').textContent = '';
     $('#lFissi').textContent = '';
     mostra('accesso');
@@ -977,6 +1277,15 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
     $('#bAggiorna').addEventListener('click', () => prova(caricaTutto, 'Aggiornato'));
     $('#bMostra').addEventListener('click', () => { S.mostra = !S.mostra; disegna(); });
     $('#fPersona').addEventListener('submit', salvaPersona);
+    $('#dPersona').addEventListener('close', fermaLettura);
+    $('#fMaster').addEventListener('submit', salvaMaster);
+    $('#fMaster').addEventListener('input', (ev) => { ev.currentTarget.dataset.sporco = '1'; });
+    $('#fMaster').attiva.addEventListener('change', (ev) => { $('#fMaster').dataset.sporco = '1'; $('#mRiga').hidden = !ev.currentTarget.checked; });
+    $('#mOcchio').addEventListener('click', (ev) => {
+      const inp = $('#fMaster').numero, b = ev.currentTarget, mostra = inp.type === 'password';
+      inp.type = mostra ? 'text' : 'password'; b.textContent = mostra ? 'Nascondi' : 'Mostra';
+      b.setAttribute('aria-pressed', String(mostra));
+    });
     $('#fPersona').addEventListener('input', aggiornaModulo);
     $('#fPersona').addEventListener('change', aggiornaModulo);
     $('#bGenera').addEventListener('click', () => { $('#fPersona').pin.value = pinCasuale(6); aggiornaModulo(); });
@@ -1003,6 +1312,7 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
   }
   async function avvio() {
     costruisciGiorni();
+    costruisciTessere();
     collega();
     $('#dove').textContent = location.host || 'file locale';
     if (md5('abc') !== '900150983cd24fb0d6963f7d28e17f72') {

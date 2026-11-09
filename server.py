@@ -55,7 +55,10 @@ VALORE = re.compile(r'^[A-Za-z0-9%._~*()!-]*$')  # valori form (gia' url-encoded
 INOLTRATI = {'action', 'index', 'group', 'name', 'room', 'relays', 'status', 'type', 'cards',
              'pin_mode', 'pin_code', 'pass_enable', 'pass_num', 'active_enable', 'start_date',
              'end_date', 'start_time', 'end_time', 'week', 'password', 'old_password',
-             'new_password'}
+             'new_password',
+             # api=card: lettura tessere col lettore della placca e tessera master
+             'enable', 'admin_card', 'security', 'mifare_enable', 'mifare_block',
+             'mifare_sector', 'mifare_key'}
 CAMPI_SEMPLICI = {'op', 'sid', 'api', 'user', 'hash', 'azione', 'token',
                   'admin_user', 'admin_pass', 'nuovo_user', 'nuova_pass', 'placca', 'monitor', 'pubblico',
                   'mon_host', 'mon_port', 'mon_user', 'mon_pass', 'placca_ip', 'relay_port'}
@@ -562,7 +565,7 @@ def gestisci(corpo, dal_tunnel, cookie, ip):
         return js, alla_placca('/cgi-bin/webapi.cgi?api=login&username=%s&password=%s' % (UTENTE, h)), None
     if op == 'api':
         api = campi.get('api', '')
-        if api not in ('user', 'unlock_passwd', 'password'):
+        if api not in ('user', 'unlock_passwd', 'password', 'card'):
             raise Errore(403, 'operazione non permessa')
         if not sid:
             raise Errore(401, 'accesso richiesto')

@@ -1,6 +1,6 @@
 # Citofono — pagina dei PIN e tunnel, su Raspberry Pi
 
-Gestisci dal telefono i **PIN fissi** e i **codici ospite/temporanei** di un
+Gestisci dal telefono i **PIN fissi**, i **codici ospite/temporanei** e le **tessere RFID** di un
 videocitofono DNAKE (placca esterna), in casa e — con il tunnel — anche da fuori.
 Tutto gira su un **Raspberry Pi** sulla stessa rete della placca: il Pi ospita la
 pagina e il tunnel, e parla con la placca tramite la sua **web API sulla porta 80**
@@ -67,6 +67,17 @@ servizio `https://localhost:443` (o `https://IP_DEL_PI:443`) con **No TLS Verify
 Così da Internet la pagina è su `https://TUO-HOST/` e il pannello su
 `https://TUO-HOST/admin`. Scrivi l'hostname anche nel campo **Indirizzo pubblico
 del tunnel** del pannello: così, a tunnel attivo, ti mostra il link pronto.
+
+## Tessere RFID
+
+Nel modulo di una persona ci sono fino a 3 tessere; nella pagina c'è anche la **tessera
+master** della placca. Il numero si legge in due modi:
+- **Placca**: premi il pulsante e passa la tessera sul lettore della placca (entro 30 s).
+  Funziona con qualunque telefono, anche iPhone.
+- **NFC**: appoggi la tessera al telefono. Solo **Chrome su Android** (su iPhone una pagina
+  web non può usare l'NFC). La prima volta la pagina chiede di passare la stessa tessera
+  anche sulla placca, per capire come convertire l'UID nel numero della placca; poi basta il
+  telefono. Se la placca usa tessere Mifare criptate l'NFC del telefono non è utilizzabile.
 
 ## Aggiornamenti
 
