@@ -51,7 +51,7 @@ PREDEFINITI = {
     'PONTE_CONF': '/etc/citofono/ponte.conf',
 }
 UTENTE = 'admin'                           # unico utente della placca ammesso dal proxy
-VALORE = re.compile(r'^[A-Za-z0-9%._~*()!-]*$')  # valori form (gia' url-encoded dal browser)
+VALORE = re.compile(r'^[A-Za-z0-9%._~*()!+-]*$')  # valori form (gia' url-encoded; '+' = spazio)
 INOLTRATI = {'action', 'index', 'group', 'name', 'room', 'relays', 'status', 'type', 'cards',
              'pin_mode', 'pin_code', 'pass_enable', 'pass_num', 'active_enable', 'start_date',
              'end_date', 'start_time', 'end_time', 'week', 'password', 'old_password',
@@ -61,7 +61,8 @@ INOLTRATI = {'action', 'index', 'group', 'name', 'room', 'relays', 'status', 'ty
              'mifare_sector', 'mifare_key'}
 CAMPI_SEMPLICI = {'op', 'sid', 'api', 'user', 'hash', 'azione', 'token',
                   'admin_user', 'admin_pass', 'nuovo_user', 'nuova_pass', 'placca', 'monitor', 'pubblico',
-                  'mon_host', 'mon_port', 'mon_user', 'mon_pass', 'placca_ip', 'relay_port'}
+                  'mon_host', 'mon_port', 'mon_user', 'mon_pass', 'placca_ip', 'relay_port',
+                  'ssid', 'wifi_pass', 'hs_ssid', 'hs_pass'}
 BLOCCATA = 'la placca ha bloccato gli accessi per qualche minuto dopo una password sbagliata: riprova tra 2-3 minuti'
 ITER = 210000                              # iterazioni PBKDF2 per la password admin
 SESSIONI = {}                              # token admin -> scadenza (epoch)
@@ -545,6 +546,29 @@ def gestisci(corpo, dal_tunnel, cookie, ip):
         except (ponte.ErrorePonte, OSError) as e:
             raise Errore(502, str(e))
         return js, json.dumps({'ok': 1, 'esito': esito}).encode('utf-8'), None
+    if op in ('admin_rete_state', 'admin_wifi_scan', 'admin_wifi_connect', 'admin_hotspot_save'):
+        import rete
+        try:
+            if op == 'admin_rete_state':
+                return js, json.dumps(rete.stato()).encode('utf-8'), None
+            if op == 'admin_wifi_scan':
+                return js, json.dumps(rete.scansiona()).encode('utf-8'), None
+            if op == 'admin_wifi_connect':
+                ssid = urllib.parse.unquote_plus(campi.get('ssid', ''))
+                pw = urllib.parse.unquote_plus(campi.get('wifi_pass', ''))
+                if not ssid:
+                    raise Errore(400, 'scegli una rete')
+                prec = rete.connetti(ssid, pw)
+                return js, json.dumps({'ok': 1, 'prec': prec}).encode('utf-8'), None
+            # admin_hotspot_save
+            ssid = urllib.parse.unquote_plus(campi.get('hs_ssid', ''))
+            pw = urllib.parse.unquote_plus(campi.get('hs_pass', ''))
+            if not ssid:
+                raise Errore(400, 'scegli un nome per l’hotspot')
+            rete.config_hotspot(ssid, pw or None)
+            return js, b'{"ok":1}', None
+        except rete.ErroreRete as e:
+            raise Errore(502, str(e))
     if op == 'admin_update':
         return testo, aggiorna_dal_repo().encode('utf-8') or b'aggiornato\n', None
     if op == 'tunnel':

@@ -151,6 +151,35 @@
   </section>
 
   <section class="scheda">
+    <h2>Rete e Wi-Fi <span id="rStato" class="stato off">…</span></h2>
+    <p class="nota" id="rInfo"></p>
+    <details id="dHotspot">
+      <summary><strong>Hotspot di soccorso</strong> — configuralo prima che serva</summary>
+      <p class="nota">Se il Pi resta senza Wi-Fi (password cambiata, trasloco…), accende una sua rete
+        per farti rientrare a sistemare dal telefono. Senza questo, l’unico recupero è la scheda SD.</p>
+      <form id="fHotspot" autocomplete="off">
+        <label>Nome dell’hotspot<input name="hs_ssid" placeholder="citofono-setup"></label>
+        <label>Password dell’hotspot <small>(almeno 8 caratteri)</small>
+          <input name="hs_pass" type="password" autocomplete="new-password" placeholder="(vuoto = non cambiarla)"></label>
+        <div class="riga"><button>Salva hotspot</button></div>
+        <p class="err" id="eHotspot"></p>
+      </form>
+    </details>
+    <details id="dWifi">
+      <summary><strong>Cambia rete Wi-Fi</strong></summary>
+      <div class="riga"><button id="rScan" class="sec" type="button">Cerca reti</button></div>
+      <div id="rReti"></div>
+      <form id="fWifi" autocomplete="off">
+        <label>Rete<input name="ssid" placeholder="nome della rete"></label>
+        <label>Password<input name="wifi_pass" type="password" autocomplete="off"></label>
+        <div class="riga"><button>Collega</button></div>
+        <p class="nota">Applica-sicuro: se la nuova rete non ha Internet, il Pi torna da solo a quella di prima entro ~1 minuto.</p>
+        <p class="err" id="eWifi"></p>
+      </form>
+    </details>
+  </section>
+
+  <section class="scheda">
     <h2>Password del pannello</h2>
     <form id="fCred" autocomplete="off">
       <label>Nuovo utente <small>(lettere e cifre)</small><input name="utente" autocomplete="username"></label>
@@ -254,6 +283,29 @@
     $('#vLogin').classList.add('nascosto');
     $('#vPanel').classList.remove('nascosto');
     await caricaStato();
+    caricaRete();
+  }
+  async function caricaRete(){
+    let r;
+    try{ r=json(await invia({op:'admin_rete_state'})); }
+    catch(e){ if(/admin/i.test(e.message)){ scaduto(); return;} disegnaRete(null); return; }
+    disegnaRete(r);
+  }
+  function disegnaRete(r){
+    const st=$('#rStato'), info=$('#rInfo');
+    if(!r||!r.nm){ st.textContent='n/d'; st.className='stato off';
+      info.textContent='NetworkManager non disponibile su questo Pi'; return; }
+    const online=!!r.connesso;
+    st.textContent=online?'online':(r.hotspot_attivo?'hotspot':'offline');
+    st.className='stato '+(online?'on':'off');
+    const n=[];
+    if(r.wifi_ssid) n.push('Wi-Fi: '+r.wifi_ssid+(r.wifi_ip?' ('+r.wifi_ip+')':''));
+    if(r.eth_ip) n.push('cavo: '+r.eth_ip);
+    if(r.hotspot_attivo) n.push('HOTSPOT ACCESO ('+(r.hotspot_ssid||'citofono-setup')+')');
+    n.push(r.hotspot_ssid? 'soccorso: hotspot «'+r.hotspot_ssid+'» pronto' : '⚠ hotspot di soccorso NON configurato');
+    n.push(r.guardia? 'guardia attiva' : 'guardia non attiva');
+    info.textContent=n.join(' · ');
+    const f=$('#fHotspot'); if(f && !f.hs_ssid.value) f.hs_ssid.value=r.hotspot_ssid||'citofono-setup';
   }
 
   // ---------- stato ----------
@@ -339,6 +391,31 @@
     const pu=f.pubblico.value.trim().replace(/^https?:\/\//,'').replace(/\/.*$/,'');
     await invia({op:'admin_save',placca:f.placca.value.trim(),monitor:f.monitor.value.trim(),pubblico:pu});
     await caricaStato(); avviso('Indirizzi salvati','ok'); }));
+
+  $('#rScan').addEventListener('click',proteggi(async()=>{
+    const b=$('#rScan'); b.disabled=true; const t=b.textContent; b.textContent='Cerco…';
+    try{
+      const reti=json(await invia({op:'admin_wifi_scan'})); const box=$('#rReti'); box.textContent='';
+      if(!reti.length){ box.textContent='Nessuna rete trovata.'; return; }
+      reti.forEach(x=>{ const el=document.createElement('button'); el.type='button'; el.className='btn ghost';
+        el.style.display='block'; el.style.width='100%'; el.style.textAlign='left'; el.style.marginTop='6px';
+        el.textContent=(x.in_uso?'✓ ':'')+x.ssid+'  ('+x.segnale+'%'+(x.sicurezza?' · '+x.sicurezza:' · aperta')+')';
+        el.addEventListener('click',()=>{ $('#fWifi').ssid.value=x.ssid; $('#fWifi').wifi_pass.focus(); });
+        box.append(el); });
+    } finally { b.disabled=false; b.textContent=t; } }));
+  $('#fWifi').addEventListener('submit',proteggi(async ev=>{ ev.preventDefault();
+    const f=ev.currentTarget; $('#eWifi').textContent='';
+    const ssid=f.ssid.value.trim();
+    if(!ssid){ $('#eWifi').textContent='Scegli o scrivi una rete'; return; }
+    if(!confirm('Collego il Pi a «'+ssid+'».\nSe la rete non funziona, torna da sola a quella di prima entro ~1 minuto.\nProcedo?')) return;
+    await invia({op:'admin_wifi_connect',ssid:ssid,wifi_pass:f.wifi_pass.value});
+    f.wifi_pass.value='';
+    avviso('Sto provando «'+ssid+'». Se il Pi cambia indirizzo potresti doverti riconnettere al pannello.','ok'); }));
+  $('#fHotspot').addEventListener('submit',proteggi(async ev=>{ ev.preventDefault();
+    const f=ev.currentTarget; $('#eHotspot').textContent='';
+    if(!f.hs_ssid.value.trim()){ $('#eHotspot').textContent='Scrivi un nome per l’hotspot'; return; }
+    await invia({op:'admin_hotspot_save',hs_ssid:f.hs_ssid.value.trim(),hs_pass:f.hs_pass.value});
+    f.hs_pass.value=''; await caricaRete(); avviso('Hotspot di soccorso configurato','ok'); }));
 
   $('#pVerifica').addEventListener('click',proteggi(async()=>{
     const b=$('#pVerifica'); b.disabled=true; const t=b.textContent; b.textContent='Attendere…';

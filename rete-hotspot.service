@@ -1,0 +1,8 @@
+[Unit]
+Description=Citofono - hotspot di soccorso se il Pi resta senza rete
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh /opt/citofono/hotspot-guard.sh
