@@ -85,11 +85,11 @@ h3 { font-size: 15px; margin: 20px 0 0; }
 
 label { display: block; margin-top: 14px; font-size: 14px; color: var(--muted); }
 input[type=text], input[type=password], input[type=number], input[type=date],
-input[type=time], input:not([type]) {
+input[type=time], input:not([type]), select {
   display: block; width: 100%; margin-top: 6px; min-height: 44px; padding: 10px 12px;
   border: 1px solid var(--line); border-radius: 10px; background: var(--bg);
   color: var(--text); font: inherit; font-size: 16px; }
-input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .spunta { display: flex; align-items: center; gap: 10px; color: var(--text); font-size: 15px; }
 .spunta input { width: 20px; height: 20px; margin: 0; accent-color: var(--accent); }
 .errore { color: var(--danger); font-weight: 600; min-height: 1.2em; margin: 12px 0 0; font-size: 14px; }
@@ -161,6 +161,7 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
 .avviso.visibile { opacity: 1; transform: translate(-50%, 0); }
 .avviso.ok { border-left-color: var(--ok); }
 .avviso.err { border-left-color: var(--danger); }
+body[data-ruolo="user"] .solo-admin { display: none !important; }
 </style>
 </head>
 <body>
@@ -190,10 +191,10 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
   <section id="vApp" hidden>
     <nav class="schede" aria-label="Sezioni">
       <button type="button" class="scheda-btn" data-pagina="pCodici" aria-pressed="true">Codici</button>
-      <button type="button" class="scheda-btn" data-pagina="pImpostazioni" aria-pressed="false">Impostazioni</button>
+      <button type="button" class="scheda-btn solo-admin" data-pagina="pImpostazioni" aria-pressed="false">Impostazioni</button>
     </nav>
     <div id="pCodici">
-    <button id="bNuovo" class="btn primario largo grande" type="button">+ Nuovo codice ospite</button>
+    <button id="bNuovo" class="btn primario largo grande solo-admin" type="button">+ Nuovo codice ospite</button>
 
     <section class="scheda">
       <div class="testa">
@@ -203,7 +204,7 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
       <ul id="lPersone" class="elenco"></ul>
     </section>
 
-    <section class="scheda">
+    <section class="scheda solo-admin">
       <div class="testa">
         <h2>PIN fissi</h2>
         <button id="bNuovoFisso" class="btn piccolo" type="button">+ Aggiungi</button>
@@ -212,7 +213,7 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
       <ul id="lFissi" class="elenco"></ul>
     </section>
 
-    <section class="scheda" id="sMaster" hidden>
+    <section class="scheda solo-admin" id="sMaster" hidden>
       <div class="testa">
         <h2>Tessera master</h2>
         <span id="mStato" class="stato spento">…</span>
@@ -243,7 +244,7 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
       <button id="bAggiorna" class="link" type="button">Aggiorna</button></p>
     </div>
 
-    <div id="pImpostazioni" hidden>
+    <div id="pImpostazioni" class="solo-admin" hidden>
       <section class="scheda">
         <div class="testa">
           <h2>Accesso da fuori (tunnel)</h2>
@@ -300,26 +301,27 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
       <button id="bGenera" class="btn" type="button">Genera</button>
     </div>
     <p class="nota" id="nPin" hidden></p>
-    <fieldset>
+    <label class="solo-admin" id="boxAssegna">Assegna a<select name="assegna"></select></label>
+    <fieldset class="solo-admin">
       <legend>Tessere RFID (fino a 3) · con una tessera il codice è facoltativo</legend>
       <div id="tessere"></div>
       <p class="nota lettura" id="lTessera" role="status" hidden></p>
     </fieldset>
-    <fieldset>
+    <fieldset class="solo-admin">
       <legend>Apre il relè</legend>
       <div class="scelte">
         <label class="scelta"><input type="checkbox" name="rele" value="0"><span>1</span></label>
         <label class="scelta"><input type="checkbox" name="rele" value="1"><span>2</span></label>
       </div>
     </fieldset>
-    <fieldset>
+    <fieldset class="solo-admin">
       <legend>Validità</legend>
       <div class="scelte">
         <label class="scelta"><input type="radio" name="tipo" value="temp"><span>Temporaneo</span></label>
         <label class="scelta"><input type="radio" name="tipo" value="sempre"><span>Sempre</span></label>
       </div>
     </fieldset>
-    <div id="boxTemp">
+    <div id="boxTemp" class="solo-admin">
       <div class="preset">
         <button type="button" class="btn piccolo" data-giorni="1">Oggi</button>
         <button type="button" class="btn piccolo" data-giorni="3">3 giorni</button>
@@ -339,9 +341,9 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
         <div class="scelte" id="giorni"></div>
       </fieldset>
     </div>
-    <label class="spunta"><input type="checkbox" name="limita"> Limita il numero di aperture</label>
-    <label id="boxUsi">Aperture consentite<input type="number" name="usi" min="1" max="10000" step="1" inputmode="numeric"></label>
-    <label class="spunta" id="boxAttivo"><input type="checkbox" name="attivo"> Codice attivo</label>
+    <label class="spunta solo-admin"><input type="checkbox" name="limita"> Limita il numero di aperture</label>
+    <label id="boxUsi" class="solo-admin">Aperture consentite<input type="number" name="usi" min="1" max="10000" step="1" inputmode="numeric"></label>
+    <label class="spunta solo-admin" id="boxAttivo"><input type="checkbox" name="attivo"> Codice attivo</label>
     <p class="errore" id="ePersona" role="alert"></p>
     <div class="bottoni">
       <button type="button" class="btn" data-chiudi>Annulla</button>
@@ -399,7 +401,8 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
   const GIORNI = [[1, 'L', 'lunedì'], [2, 'M', 'martedì'], [3, 'M', 'mercoledì'], [4, 'G', 'giovedì'],
     [5, 'V', 'venerdì'], [6, 'S', 'sabato'], [0, 'D', 'domenica']];
   const BREVI = ['dom', 'lun', 'mar', 'mer', 'gio', 'ven', 'sab'];
-  const S = { user: 'admin', pass: '', sid: '', persone: [], fissi: [], card: null, mostra: false, persona: null, fisso: null };
+  const S = { user: 'admin', pass: '', sid: '', ruolo: 'admin', assegnabili: [], proprieta: {},
+    persone: [], fissi: [], card: null, mostra: false, persona: null, fisso: null };
 
   // ---------- md5 (la placca vuole md5 della password; il browser non lo offre) ----------
   function md5(testo) {
@@ -503,8 +506,10 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
     await chiama('user');                   // la placca rigenera users.xml
     let t = '';
     try { t = await conSessione({ op: 'elenco' }); } catch (e) { if (e.stato !== 404) throw e; }
-    S.persone = t.split(/\r?\n/).filter((r) => r.trim()).map((r, i) => {
-      const c = r.split(','), p = { index: i };
+    // l'indice e' la posizione ORIGINALE della riga (il server puo' svuotare le righe
+    // non di proprieta' dell'utente: gli indici devono restare quelli della placca)
+    S.persone = t.split(/\r?\n/).map((r, i) => ({ r: r, i: i })).filter((x) => x.r.trim()).map((x) => {
+      const c = x.r.split(','), p = { index: x.i };
       COL.forEach((k, n) => { p[k] = (c[n] || '').trim(); });
       return p;
     });
@@ -524,7 +529,22 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
       S.card = d && typeof d === 'object' && d.enable !== undefined ? d : null;
     } catch (e) { if (e instanceof ErroreAccesso) throw e; S.card = null; }
   }
-  async function caricaTutto() { await caricaPersone(); await caricaFissi(); await caricaTessere(); disegna(); }
+  async function caricaTutto() {
+    await caricaPersone();
+    if (S.ruolo !== 'user') { await caricaFissi(); await caricaTessere(); }
+    disegna();
+  }
+  // ruolo della sessione e (per il gestore) utenti assegnabili + mappa di proprieta'
+  async function chiStato() {
+    try { S.ruolo = (json(await invia({ op: 'chisono' })).ruolo) || 'admin'; }
+    catch (e) { S.ruolo = 'admin'; }
+    document.body.dataset.ruolo = S.ruolo;
+    S.assegnabili = []; S.proprieta = {};
+    if (S.ruolo !== 'user') {
+      try { const p = json(await invia({ op: 'proprieta' })); S.assegnabili = p.utenti || []; S.proprieta = p.mappa || {}; }
+      catch (e) { /* in modo compatibile puo' non esistere */ }
+    }
+  }
 
   // prima di modificare/cancellare: la riga e' ancora quella? (qualcun altro puo' aver cambiato l'elenco)
   async function controllaPersona(p) {
@@ -651,14 +671,16 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
       const nt = tessereDi(p).length;
       r2.append(p.pin ? el('span', 'codice', nascondi(p.pin)) : el('span', null, 'nessun codice'),
         (nt ? ' · ' + (nt === 1 ? '1 tessera' : nt + ' tessere') : '') + ' · ' + testoRele(p.rele));
-      const az = el('div', 'azioni');
+      const az = el('div', 'azioni'), semplice = S.ruolo === 'user';
       if (p.pin) az.append(bottone('Condividi', () => apriCondividi(p)));
-      if (!inGruppo) {
-        az.append(bottone('Modifica', () => apriPersona(p)));
-        az.append(bottone(p.stato === '1' ? 'Disattiva' : 'Attiva', () => cambiaStato(p)));
-      }
-      az.append(bottone('Elimina', () => eliminaPersona(p), 'pericolo'));
+      if (!inGruppo) az.append(bottone(semplice ? 'Cambia PIN' : 'Modifica', () => apriPersona(p)));
+      if (!semplice && !inGruppo) az.append(bottone(p.stato === '1' ? 'Disattiva' : 'Attiva', () => cambiaStato(p)));
+      if (!semplice) az.append(bottone('Elimina', () => eliminaPersona(p), 'pericolo'));
       li.append(r1, r2, el('div', 'dettagli', descrizione(p)), az);
+      if (!semplice && S.assegnabili.length) {
+        const o = S.proprieta[String(p.index)];
+        li.append(el('p', 'nota', o ? 'Assegnato a: ' + o : 'Non assegnato'));
+      }
       if (inGruppo) li.append(el('p', 'nota', 'Fa parte di un gruppo: per modificarlo usa la pagina della placca.'));
       ul.append(li);
     }
@@ -725,6 +747,16 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
     const ts = tessereDi(p);
     f.querySelectorAll('input[name=tessera]').forEach((i, n) => { i.value = ts[n] || ''; });
     statoLettura($('#lTessera'), '');
+    f.nome.readOnly = S.ruolo === 'user';
+    if (S.ruolo === 'user' && p) $('#tPersona').textContent = 'Cambia il PIN di ' + p.nome;
+    // assegnazione (solo gestore, se ci sono utenti assegnabili)
+    const box = $('#boxAssegna'), sel = f.assegna;
+    if (S.ruolo !== 'user' && S.assegnabili.length) {
+      box.hidden = false; sel.textContent = '';
+      sel.append(new Option('(nessuno)', ''));
+      S.assegnabili.forEach((u) => sel.append(new Option(u, u)));
+      sel.value = p ? (S.proprieta[String(p.index)] || '') : '';
+    } else { box.hidden = true; }
     aggiornaModulo();
     $('#dPersona').showModal();
   }
@@ -751,6 +783,18 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
   async function salvaPersona(ev) {
     ev.preventDefault();
     const f = ev.currentTarget, p = S.persona, err = $('#ePersona');
+    if (S.ruolo === 'user') {                 // l'utente semplice cambia SOLO il proprio PIN
+      const soloPin = f.pin.value.trim(); err.textContent = '';
+      if (!/^\d{4,8}$/.test(soloPin)) { err.textContent = 'Il codice deve avere da 4 a 8 cifre'; return; }
+      try {
+        await occupato(async () => {
+          if (p) await controllaPersona(p);
+          await scrivi('user', { action: '2', index: String(p.index), pin_code: soloPin });
+          await caricaTutto();
+        });
+      } catch (e) { err.textContent = e.message; return; }
+      $('#dPersona').close(); avviso('PIN aggiornato', 'ok'); return;
+    }
     const nome = f.nome.value.trim(), pin = f.pin.value.trim(), temp = f.tipo.value === 'temp';
     const rele = Array.from(f.querySelectorAll('input[name=rele]:checked'), (i) => i.value);
     const tessere = Array.from(f.querySelectorAll('input[name=tessera]'), (i) => i.value.trim()).filter(Boolean);
@@ -772,8 +816,21 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
         week: [0, 1, 2, 3, 4, 5, 6].map((g) => (f.querySelector('input[name=giorno][value="' + g + '"]').checked ? '1' : '0')).join(';')
       });
     }
+    const assegna = S.assegnabili.length ? f.assegna.value : null;
     try {
-      await occupato(async () => { if (p) await controllaPersona(p); await scrivi('user', dati); await caricaTutto(); });
+      await occupato(async () => {
+        if (p) await controllaPersona(p);
+        await scrivi('user', dati);
+        await caricaTutto();
+        if (assegna !== null) {
+          const idx = p ? p.index : (S.persone.find((x) => x.nome === nome && x.pin === pin) || {}).index;
+          if (idx !== undefined) {
+            await invia({ op: 'assegna', index: String(idx), pin_user: assegna });
+            try { S.proprieta = json(await invia({ op: 'proprieta' })).mappa || S.proprieta; } catch (e) { /* ignora */ }
+            disegna();
+          }
+        }
+      });
     } catch (e) { err.textContent = e.message; return; }
     $('#dPersona').close();
     const nuovo = S.persone.find((x) => x.nome === nome && x.pin === pin);
@@ -1243,7 +1300,7 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
     S.user = f.user.value.trim() || 'admin';
     S.pass = f.pass.value;
     S.sid = '';
-    try { await occupato(async () => { await accedi(); await caricaTutto(); }); }
+    try { await occupato(async () => { await accedi(); await chiStato(); await caricaTutto(); }); }
     catch (e) { S.pass = ''; $('#eAccesso').textContent = e.message; return; }
     salvaCredenziali(f.ricorda.checked);
     f.pass.value = '';
@@ -1324,7 +1381,7 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
     if (c) {
       S.user = c.user; S.pass = c.pass;
       $('#fAccesso').user.value = c.user;
-      try { await occupato(async () => { await accedi(); await caricaTutto(); }); mostra('app'); return; }
+      try { await occupato(async () => { await accedi(); await chiStato(); await caricaTutto(); }); mostra('app'); return; }
       catch (e) { S.pass = ''; $('#eAccesso').textContent = e.message; }
     }
     mostra('accesso');

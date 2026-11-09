@@ -37,9 +37,9 @@
     box-shadow:var(--shadow);padding:18px;margin-bottom:16px}
   label{display:block;margin-top:14px;font-size:14px;color:var(--tenue)}
   label small{color:var(--tenue);font-weight:400}
-  input{display:block;width:100%;margin-top:6px;min-height:46px;padding:11px 13px;background:var(--campo);
+  input,select{display:block;width:100%;margin-top:6px;min-height:46px;padding:11px 13px;background:var(--campo);
     color:var(--testo);border:1px solid var(--bordo);border-radius:11px;font:inherit;font-size:16px}
-  input:focus{outline:2px solid var(--primario);outline-offset:1px}
+  input:focus,select:focus{outline:2px solid var(--primario);outline-offset:1px}
   button{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:48px;
     padding:11px 20px;border:1px solid var(--primario);border-radius:12px;font:inherit;font-weight:600;
     cursor:pointer;background:var(--primario);color:var(--primario-t);-webkit-tap-highlight-color:transparent;
@@ -88,8 +88,8 @@
     <div class="riga"><button>Entra</button></div>
     <p class="err" id="eLogin" role="alert"></p>
   </form>
-  <p class="nota">Il pannello imposta token e password: proteggilo con una password lunga.
-    Dopo alcuni tentativi sbagliati l'accesso si blocca per qualche minuto.</p>
+  <p class="nota">Entra con un account di ruolo <strong>gestore</strong> (creato qui sotto). Finché non ne esiste nessuno,
+    vale la password iniziale del pannello. Dopo alcuni tentativi sbagliati l'accesso si blocca per qualche minuto.</p>
 </section>
 
 <!-- PANNELLO -->
@@ -209,6 +209,11 @@
         <label>Nome utente<input name="pin_user" autocomplete="off" placeholder="es. mario"></label>
         <label>Password <small>(almeno 6 caratteri)</small>
           <input name="pin_pass" type="password" autocomplete="new-password"></label>
+        <label>Ruolo
+          <select name="ruolo">
+            <option value="user">utente — vede e cambia solo i PIN che gli assegni</option>
+            <option value="admin">gestore — accede anche a /admin e gestisce tutto</option>
+          </select></label>
         <div class="riga"><button>Aggiungi utente</button></div>
         <p class="err" id="eUtente"></p>
       </form>
@@ -323,11 +328,13 @@
     r.utenti.forEach(u=>{
       const row=document.createElement('div'); row.className='riga'; row.style.marginTop='8px';
       const nome=document.createElement('span'); nome.textContent=u.user; nome.style.flex='1';
+      const tag=document.createElement('span'); tag.className='stato '+(u.ruolo==='admin'?'on':'off');
+      tag.textContent=u.ruolo==='admin'?'gestore':'utente';
       const del=document.createElement('button'); del.type='button'; del.className='ghost'; del.textContent='Rimuovi';
       del.addEventListener('click',proteggi(async()=>{
         if(!confirm('Rimuovere l’utente «'+u.user+'»?'))return;
         await invia({op:'admin_utente_del',pin_user:u.user}); await caricaUtenti(); avviso('Utente rimosso','ok'); }));
-      row.append(nome,del); box.append(row);
+      row.append(nome,tag,del); box.append(row);
     });
   }
   async function caricaRete(){
@@ -493,7 +500,7 @@
     if(!/^[0-9A-Za-z._-]{1,32}$/.test(f.pin_user.value)){ err.textContent='Nome utente: lettere, cifre, . _ -'; return; }
     if(f.pin_pass.value.length<6){ err.textContent='La password: almeno 6 caratteri'; return; }
     err.textContent='';
-    await invia({op:'admin_utente_add',pin_user:f.pin_user.value,pin_pass:f.pin_pass.value});
+    await invia({op:'admin_utente_add',pin_user:f.pin_user.value,pin_pass:f.pin_pass.value,ruolo:f.ruolo.value});
     f.reset(); await caricaUtenti(); avviso('Utente aggiunto','ok'); }));
 
   // password placca (login sulla placca + cambio) e monitor (dal server)

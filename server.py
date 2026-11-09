@@ -51,6 +51,7 @@ PREDEFINITI = {
     'PONTE_CONF': '/etc/citofono/ponte.conf',
     'UTENTI': '/etc/citofono/utenti.json',
     'PLACCA_CRED': '/etc/citofono/placca.json',
+    'PROPRIETA': '/etc/citofono/proprieta.json',
 }
 UTENTE = 'admin'                           # unico utente della placca ammesso dal proxy
 VALORE = re.compile(r'^[A-Za-z0-9%._~*()!+-]*$')  # valori form (gia' url-encoded; '+' = spazio)
@@ -65,10 +66,11 @@ CAMPI_SEMPLICI = {'op', 'sid', 'api', 'user', 'hash', 'azione', 'token',
                   'admin_user', 'admin_pass', 'nuovo_user', 'nuova_pass', 'placca', 'monitor', 'pubblico',
                   'mon_host', 'mon_port', 'mon_user', 'mon_pass', 'placca_ip', 'relay_port',
                   'ssid', 'wifi_pass', 'hs_ssid', 'hs_pass',
-                  'pass', 'pin_user', 'pin_pass', 'placca_pass'}
-BLOCCATA = 'la placca ha bloccato gli accessi per qualche minuto dopo una password sbagliata: riprova tra 2-3 minuti'
+                  'pass', 'pin_user', 'pin_pass', 'placca_pass', 'ruolo'}
+BLOCCATA ='la placca ha bloccato gli accessi per qualche minuto dopo una password sbagliata: riprova tra 2-3 minuti'
 ITER = 210000                              # iterazioni PBKDF2 per la password admin
 SESSIONI = {}                              # token admin -> scadenza (epoch)
+PINSESS = {}                               # token pagina / -> {user, ruolo, scad}
 DURATA = 1800                              # 30 minuti di sessione admin
 TENTATIVI = {}                             # ip -> [numero fail, bloccato_fino_a]
 MAX_FAIL, BLOCCO = 5, 300                  # 5 errori -> 5 minuti di blocco
@@ -204,13 +206,25 @@ def salva_utenti(lista):
         json.dump(lista, f)
 
 
-def aggiungi_utente(utente, password):
+def aggiungi_utente(utente, password, ruolo='user'):
     salt = secrets.token_bytes(16)
     h = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, ITER)
-    voce = {'user': utente, 'iter': ITER, 'salt': salt.hex(), 'hash': h.hex()}
+    voce = {'user': utente, 'ruolo': ruolo if ruolo in ('admin', 'user') else 'user',
+            'iter': ITER, 'salt': salt.hex(), 'hash': h.hex()}
     lista = [u for u in carica_utenti() if u.get('user') != utente]
     lista.append(voce)
     salva_utenti(lista)
+
+
+def ruolo_utente(utente):
+    for u in carica_utenti():
+        if u.get('user') == utente:
+            return u.get('ruolo', 'user')
+    return ''
+
+
+def esiste_admin():
+    return any(u.get('ruolo', 'user') == 'admin' for u in carica_utenti())
 
 
 def elimina_utente(utente):
@@ -238,6 +252,81 @@ def leggi_placca_hash():
             return json.load(f).get('hash', '')
     except (OSError, ValueError):
         return ''
+
+
+# sessione della pagina / (porta il ruolo: il server filtra e autorizza di conseguenza)
+def nuova_pinsess(utente, ruolo):
+    tok = secrets.token_urlsafe(24)
+    PINSESS[tok] = {'user': utente, 'ruolo': ruolo, 'scad': time.time() + DURATA}
+    for t, se in list(PINSESS.items()):
+        if se['scad'] < time.time():
+            PINSESS.pop(t, None)
+    return tok
+
+
+def pinsess(cookie):
+    se = PINSESS.get(cookie or '')
+    if se and se['scad'] > time.time():
+        se['scad'] = time.time() + DURATA
+        return se
+    return None
+
+
+# proprieta' dei codici persona: {"<indice riga users.xml>": "<utente>"}.
+# L'indice e' stabile sotto le azioni dell'utente semplice (non aggiunge/toglie righe);
+# se il gestore aggiunge o elimina persone, riassegna dalla pagina.
+def leggi_proprieta():
+    try:
+        with open(CONF['PROPRIETA'], encoding='utf-8') as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def salva_proprieta(d):
+    fd = os.open(CONF['PROPRIETA'], os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, 'w', encoding='utf-8') as f:
+        json.dump(d, f)
+
+
+def proprietario(indice):
+    return leggi_proprieta().get(str(indice), '')
+
+
+# colonne di users.xml, stesso ordine della pagina
+COLONNE = ['nome', 'gruppo', 'stanza', 'tipo', 'stato', 'rele', 'tessere', 'pin_mode', 'pin',
+           'pass_on', 'usi', 'valid_on', 'dal', 'al', 'dalle', 'alle', 'settimana']
+
+
+def corpo_modifica_pin(sid, idx, nuovo_pin):
+    """Ruolo 'user': ricostruisce la modifica dai valori ATTUALI della persona,
+    cambiando SOLO il codice PIN (non utilizzi ne' validita')."""
+    if not re.fullmatch(r'[0-9]{4,8}', nuovo_pin):
+        raise Errore(400, 'il PIN deve avere da 4 a 8 cifre')
+    try:
+        testo = alla_placca('/data/users.xml', None, sid).decode('utf-8', 'replace')
+        righe = [r for r in testo.splitlines() if r.strip()]
+        riga = righe[int(idx)]
+    except (IndexError, ValueError):
+        raise Errore(409, "l'elenco e' cambiato: aggiorna e riprova")
+    c = (riga.split(',') + [''] * len(COLONNE))[:len(COLONNE)]
+    v = dict(zip(COLONNE, (x.strip() for x in c)))
+    campi = [
+        ('action', '2'), ('index', str(idx)), ('group', v['gruppo']), ('name', v['nome']),
+        ('room', v['stanza'] if v['stanza'] != '-1' else ''), ('relays', v['rele']),
+        ('status', v['stato']), ('type', v['tipo'] or '0'),
+        ('cards', '' if v['tessere'] in ('None', '') else v['tessere']),
+        ('pin_mode', '1' if nuovo_pin else '0'), ('pin_code', nuovo_pin),
+        ('pass_enable', '1' if v['pass_on'] == '1' else '0'),
+        ('active_enable', '1' if v['valid_on'] == '1' else '0'),
+    ]
+    if v['pass_on'] == '1':
+        campi.append(('pass_num', v['usi']))
+    if v['valid_on'] == '1':
+        campi += [('start_date', v['dal']), ('end_date', v['al']),
+                  ('start_time', v['dalle']), ('end_time', v['alle']), ('week', v['settimana'])]
+    return '&'.join('%s=%s' % (k, urllib.parse.quote_plus(val)) for k, val in campi)
 
 
 # ---------- rete verso placca / monitor ----------
@@ -470,7 +559,7 @@ def segna_fallito(ip):
 
 
 # ---------- smistamento richieste ----------
-def gestisci(corpo, dal_tunnel, cookie, ip):
+def gestisci(corpo, dal_tunnel, cookie, cookie_pin, ip):
     campi, avanti = {}, []
     for campo in corpo.split('&') if corpo else []:
         k, _, v = campo.partition('=')
@@ -501,7 +590,13 @@ def gestisci(corpo, dal_tunnel, cookie, ip):
             raise Errore(429, 'troppi tentativi: riprova tra qualche minuto')
         u = urllib.parse.unquote_plus(campi.get('admin_user', ''))
         p = urllib.parse.unquote_plus(campi.get('admin_pass', ''))
-        if not verifica_admin(u, p):
+        # /admin si apre con un account di ruolo admin; finche' non ne esiste nessuno
+        # vale ancora la vecchia password del pannello (bootstrap, per non restare chiusi fuori)
+        if esiste_admin():
+            valido = verifica_utente(u, p) and ruolo_utente(u) == 'admin'
+        else:
+            valido = verifica_admin(u, p)
+        if not valido:
             segna_fallito(ip)
             raise Errore(401, 'utente o password non corretti')
         TENTATIVI.pop(ip, None)
@@ -626,7 +721,7 @@ def gestisci(corpo, dal_tunnel, cookie, ip):
             raise Errore(502, str(e))
     if op in ('admin_utenti', 'admin_utente_add', 'admin_utente_del', 'admin_placca_pass'):
         if op == 'admin_utenti':
-            lista = [{'user': u.get('user', '')} for u in carica_utenti()]
+            lista = [{'user': u.get('user', ''), 'ruolo': u.get('ruolo', 'user')} for u in carica_utenti()]
             return js, json.dumps({'utenti': lista,
                                    'placca_impostata': bool(leggi_placca_hash())}).encode('utf-8'), None
         if op == 'admin_placca_pass':
@@ -642,7 +737,8 @@ def gestisci(corpo, dal_tunnel, cookie, ip):
                 raise Errore(400, 'utente: lettere, cifre, . _ - (max 32)')
             if len(pw) < 6:
                 raise Errore(400, 'la password deve avere almeno 6 caratteri')
-            aggiungi_utente(u, pw)
+            ruolo = campi.get('ruolo', 'user')
+            aggiungi_utente(u, pw, 'admin' if ruolo == 'admin' else 'user')
             return js, b'{"ok":1}', None
         elimina_utente(urllib.parse.unquote_plus(campi.get('pin_user', '')))
         return js, b'{"ok":1}', None
@@ -656,11 +752,43 @@ def gestisci(corpo, dal_tunnel, cookie, ip):
             raise Errore(400, 'password mancanti')
         return js, password_monitor(campi['old_password'], campi['new_password']), None
 
+    # --- pagina PIN: ruolo della sessione corrente (None = modo compatibile, pieni poteri) ---
+    sess = pinsess(cookie_pin)
+    ruolo = sess['ruolo'] if sess else None
+    admin_pagina = (sess and sess['ruolo'] == 'admin') or sessione_ok(cookie)
+
+    if op == 'chisono':                          # chi sono io per la pagina /
+        if sess:
+            return js, json.dumps({'user': sess['user'], 'ruolo': sess['ruolo']}).encode('utf-8'), None
+        return js, json.dumps({'user': '', 'ruolo': 'admin'}).encode('utf-8'), None
+    if op == 'proprieta':                        # mappa proprieta' + utenti assegnabili (solo gestore)
+        if not admin_pagina:
+            raise Errore(403, 'riservato al gestore')
+        asseg = [u['user'] for u in carica_utenti() if u.get('ruolo', 'user') == 'user']
+        return js, json.dumps({'mappa': leggi_proprieta(), 'utenti': asseg}).encode('utf-8'), None
+    if op == 'assegna':                          # assegna/togli il proprietario di un codice (solo gestore)
+        if not admin_pagina:
+            raise Errore(403, 'riservato al gestore')
+        idx = campi.get('index', '')
+        if not re.fullmatch(r'[0-9]{1,4}', idx):
+            raise Errore(400, 'indice non valido')
+        u = urllib.parse.unquote_plus(campi.get('pin_user', ''))
+        d = leggi_proprieta()
+        if u:
+            if ruolo_utente(u) != 'user':
+                raise Errore(400, 'scegli un utente semplice esistente')
+            d[idx] = u
+        else:
+            d.pop(idx, None)
+        salva_proprieta(d)
+        return js, b'{"ok":1}', None
+
     # --- pagina PIN: proxy verso la placca (serve la sessione della placca) ---
     if not re.fullmatch(r'[0-9.:]+', CONF['PLACCA']):
         raise Errore(502, 'IP della placca non impostato: aprilo nel pannello admin')
     if op == 'login':
         h = campi.get('hash', '')
+        pin_user = pin_ruolo = None
         if h and re.fullmatch(r'[0-9a-f]{32}', h):
             ph = h                                   # compat: vecchio flusso (md5 della placca)
         else:
@@ -678,20 +806,47 @@ def gestisci(corpo, dal_tunnel, cookie, ip):
                 ph = leggi_placca_hash()
                 if not ph:
                     raise Errore(502, 'password della placca non impostata nel pannello admin')
+                pin_user, pin_ruolo = u, (ruolo_utente(u) or 'user')
             else:                                    # nessun account: pw = password della placca
                 ph = hashlib.md5(pw.encode('utf-8')).hexdigest()
-        return js, alla_placca('/cgi-bin/webapi.cgi?api=login&username=%s&password=%s' % (UTENTE, ph)), None
+        risp = alla_placca('/cgi-bin/webapi.cgi?api=login&username=%s&password=%s' % (UTENTE, ph))
+        extra = None
+        if pin_user:                                 # sessione della pagina / col ruolo
+            tok = nuova_pinsess(pin_user, pin_ruolo)
+            c = 'PinSID=%s; HttpOnly; SameSite=Strict; Path=/; Max-Age=%d' % (tok, DURATA)
+            if CONF['CERT']:
+                c += '; Secure'
+            extra = {'Set-Cookie': c}
+        return js, risp, extra
     if op == 'api':
         api = campi.get('api', '')
         if api not in ('user', 'unlock_passwd', 'password', 'card'):
             raise Errore(403, 'operazione non permessa')
         if not sid:
             raise Errore(401, 'accesso richiesto')
-        return js, alla_placca('/cgi-bin/webapi.cgi?api=' + api, '&'.join(avanti), sid), None
+        corpo_api = '&'.join(avanti)
+        if ruolo == 'user':                          # utente semplice: solo i PROPRI codici persona
+            if api != 'user':
+                raise Errore(403, 'operazione riservata al gestore')
+            az = campi.get('action', '')
+            if az == '2':                            # modifica: deve essere sua, e cambia solo il PIN
+                idx = campi.get('index', '')
+                if proprietario(idx) != sess['user']:
+                    raise Errore(403, 'questo codice non e\' tuo')
+                corpo_api = corpo_modifica_pin(sid, idx, urllib.parse.unquote_plus(campi.get('pin_code', '')))
+            elif az not in ('', '3'):                # 1 = aggiungi, 0 = elimina: vietati
+                raise Errore(403, 'solo il gestore puo\' aggiungere o togliere codici')
+        return js, alla_placca('/cgi-bin/webapi.cgi?api=' + api, corpo_api, sid), None
     if op == 'elenco':
         if not sid:
             raise Errore(401, 'accesso richiesto')
-        return testo, alla_placca('/data/users.xml', None, sid), None
+        dati = alla_placca('/data/users.xml', None, sid)
+        if ruolo == 'user':                          # mostra solo le righe di proprieta' dell'utente,
+            mio = leggi_proprieta()                  # svuotando le altre (gli indici restano coerenti)
+            righe = dati.decode('utf-8', 'replace').split('\n')
+            dati = '\n'.join(r if mio.get(str(i)) == sess['user'] else ''
+                             for i, r in enumerate(righe)).encode('utf-8')
+        return testo, dati, None
     raise Errore(400, 'operazione sconosciuta')
 
 
@@ -701,11 +856,14 @@ class Gestore(http.server.BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
 
     def _cookie(self):
+        admin = pin = ''
         for pezzo in (self.headers.get('Cookie') or '').split(';'):
             k, _, v = pezzo.strip().partition('=')
             if k == 'AdminSID':
-                return v
-        return ''
+                admin = v
+            elif k == 'PinSID':
+                pin = v
+        return admin, pin
 
     def manda(self, stato, tipo, corpo, extra=None):
         self.send_response(stato)
@@ -766,7 +924,8 @@ class Gestore(http.server.BaseHTTPRequestHandler):
         dal_tunnel = bool(self.headers.get('Cf-Connecting-Ip'))
         ip = self.headers.get('Cf-Connecting-Ip') or self.client_address[0]
         try:
-            tipo, uscita, extra = gestisci(corpo, dal_tunnel, self._cookie(), ip)
+            ca, cp = self._cookie()
+            tipo, uscita, extra = gestisci(corpo, dal_tunnel, ca, cp, ip)
         except Errore as e:
             return self.manda(e.stato, 'text/plain; charset=utf-8', (e.testo + '\n').encode('utf-8'))
         except Exception as e:
