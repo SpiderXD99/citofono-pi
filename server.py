@@ -49,6 +49,8 @@ PREDEFINITI = {
     'ADMIN_LAN_ONLY': '0',                 # 1 = pannello admin solo da casa (LAN)
     'CONF': '/etc/citofono/citofono.conf',
     'PONTE_CONF': '/etc/citofono/ponte.conf',
+    'UTENTI': '/etc/citofono/utenti.json',
+    'PLACCA_CRED': '/etc/citofono/placca.json',
 }
 UTENTE = 'admin'                           # unico utente della placca ammesso dal proxy
 VALORE = re.compile(r'^[A-Za-z0-9%._~*()!+-]*$')  # valori form (gia' url-encoded; '+' = spazio)
@@ -62,7 +64,8 @@ INOLTRATI = {'action', 'index', 'group', 'name', 'room', 'relays', 'status', 'ty
 CAMPI_SEMPLICI = {'op', 'sid', 'api', 'user', 'hash', 'azione', 'token',
                   'admin_user', 'admin_pass', 'nuovo_user', 'nuova_pass', 'placca', 'monitor', 'pubblico',
                   'mon_host', 'mon_port', 'mon_user', 'mon_pass', 'placca_ip', 'relay_port',
-                  'ssid', 'wifi_pass', 'hs_ssid', 'hs_pass'}
+                  'ssid', 'wifi_pass', 'hs_ssid', 'hs_pass',
+                  'pass', 'pin_user', 'pin_pass', 'placca_pass'}
 BLOCCATA = 'la placca ha bloccato gli accessi per qualche minuto dopo una password sbagliata: riprova tra 2-3 minuti'
 ITER = 210000                              # iterazioni PBKDF2 per la password admin
 SESSIONI = {}                              # token admin -> scadenza (epoch)
@@ -183,6 +186,58 @@ def verifica_admin(utente, password):
         return False
     h = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), bytes.fromhex(a['salt']), a.get('iter', ITER))
     return hmac.compare_digest(utente, a['user']) and hmac.compare_digest(h.hex(), a['hash'])
+
+
+# ---------- utenti della pagina PIN (account separati da placca/monitor) ----------
+def carica_utenti():
+    try:
+        with open(CONF['UTENTI'], encoding='utf-8') as f:
+            d = json.load(f)
+        return d if isinstance(d, list) else d.get('utenti', [])
+    except (OSError, ValueError):
+        return []
+
+
+def salva_utenti(lista):
+    fd = os.open(CONF['UTENTI'], os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, 'w', encoding='utf-8') as f:
+        json.dump(lista, f)
+
+
+def aggiungi_utente(utente, password):
+    salt = secrets.token_bytes(16)
+    h = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, ITER)
+    voce = {'user': utente, 'iter': ITER, 'salt': salt.hex(), 'hash': h.hex()}
+    lista = [u for u in carica_utenti() if u.get('user') != utente]
+    lista.append(voce)
+    salva_utenti(lista)
+
+
+def elimina_utente(utente):
+    salva_utenti([u for u in carica_utenti() if u.get('user') != utente])
+
+
+def verifica_utente(utente, password):
+    for u in carica_utenti():
+        if hmac.compare_digest(utente, u.get('user', '')):
+            h = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'),
+                                    bytes.fromhex(u['salt']), u.get('iter', ITER))
+            return hmac.compare_digest(h.hex(), u['hash'])
+    return False
+
+
+def salva_placca_hash(md5):
+    fd = os.open(CONF['PLACCA_CRED'], os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, 'w', encoding='utf-8') as f:
+        json.dump({'hash': md5}, f)
+
+
+def leggi_placca_hash():
+    try:
+        with open(CONF['PLACCA_CRED'], encoding='utf-8') as f:
+            return json.load(f).get('hash', '')
+    except (OSError, ValueError):
+        return ''
 
 
 # ---------- rete verso placca / monitor ----------
@@ -569,6 +624,28 @@ def gestisci(corpo, dal_tunnel, cookie, ip):
             return js, b'{"ok":1}', None
         except rete.ErroreRete as e:
             raise Errore(502, str(e))
+    if op in ('admin_utenti', 'admin_utente_add', 'admin_utente_del', 'admin_placca_pass'):
+        if op == 'admin_utenti':
+            lista = [{'user': u.get('user', '')} for u in carica_utenti()]
+            return js, json.dumps({'utenti': lista,
+                                   'placca_impostata': bool(leggi_placca_hash())}).encode('utf-8'), None
+        if op == 'admin_placca_pass':
+            pw = urllib.parse.unquote_plus(campi.get('placca_pass', ''))
+            if not pw:
+                raise Errore(400, 'scrivi la password della placca')
+            salva_placca_hash(hashlib.md5(pw.encode('utf-8')).hexdigest())
+            return js, b'{"ok":1}', None
+        if op == 'admin_utente_add':
+            u = urllib.parse.unquote_plus(campi.get('pin_user', ''))
+            pw = urllib.parse.unquote_plus(campi.get('pin_pass', ''))
+            if not re.fullmatch(r'[0-9A-Za-z._-]{1,32}', u):
+                raise Errore(400, 'utente: lettere, cifre, . _ - (max 32)')
+            if len(pw) < 6:
+                raise Errore(400, 'la password deve avere almeno 6 caratteri')
+            aggiungi_utente(u, pw)
+            return js, b'{"ok":1}', None
+        elimina_utente(urllib.parse.unquote_plus(campi.get('pin_user', '')))
+        return js, b'{"ok":1}', None
     if op == 'admin_update':
         return testo, aggiorna_dal_repo().encode('utf-8') or b'aggiornato\n', None
     if op == 'tunnel':
@@ -584,9 +661,26 @@ def gestisci(corpo, dal_tunnel, cookie, ip):
         raise Errore(502, 'IP della placca non impostato: aprilo nel pannello admin')
     if op == 'login':
         h = campi.get('hash', '')
-        if campi.get('user') != UTENTE or not re.fullmatch(r'[0-9a-f]{32}', h):
-            raise Errore(401, 'utente o password non validi')
-        return js, alla_placca('/cgi-bin/webapi.cgi?api=login&username=%s&password=%s' % (UTENTE, h)), None
+        if h and re.fullmatch(r'[0-9a-f]{32}', h):
+            ph = h                                   # compat: vecchio flusso (md5 della placca)
+        else:
+            u = urllib.parse.unquote_plus(campi.get('user', ''))
+            pw = urllib.parse.unquote_plus(campi.get('pass', ''))
+            if not pw:
+                raise Errore(401, 'utente o password non validi')
+            if carica_utenti():                      # ci sono account: verifica l'account
+                if bloccato(ip):
+                    raise Errore(429, 'troppi tentativi: riprova tra qualche minuto')
+                if not verifica_utente(u, pw):
+                    segna_fallito(ip)
+                    raise Errore(401, 'utente o password non validi')
+                TENTATIVI.pop(ip, None)
+                ph = leggi_placca_hash()
+                if not ph:
+                    raise Errore(502, 'password della placca non impostata nel pannello admin')
+            else:                                    # nessun account: pw = password della placca
+                ph = hashlib.md5(pw.encode('utf-8')).hexdigest()
+        return js, alla_placca('/cgi-bin/webapi.cgi?api=login&username=%s&password=%s' % (UTENTE, ph)), None
     if op == 'api':
         api = campi.get('api', '')
         if api not in ('user', 'unlock_passwd', 'password', 'card'):

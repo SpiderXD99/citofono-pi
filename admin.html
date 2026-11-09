@@ -192,6 +192,30 @@
   </section>
 
   <section class="scheda">
+    <h2>Pagina dei PIN — chi può entrare</h2>
+    <p class="nota">La pagina dei PIN (<code>/</code>) ha utenti propri, separati da placca e monitor.
+      Il Pi entra nella placca con la password qui sotto; gli utenti elencati accedono con nome e password propri.
+      <strong>Se non crei nessun utente</strong>, la pagina chiede direttamente la password della placca, come prima.</p>
+    <form id="fPlaccaCred" autocomplete="off">
+      <label>Password della placca <small>(usata dal Pi) — <span id="uPlacca" class="stato off">…</span></small>
+        <input name="placca_pass" type="password" autocomplete="off" placeholder="(vuoto = lasciala com’è)"></label>
+      <div class="riga"><button class="sec">Salva password placca</button></div>
+      <p class="err" id="ePlaccaCred"></p>
+    </form>
+    <div style="margin-top:1.4em">
+      <label style="margin-top:0"><strong>Utenti della pagina</strong></label>
+      <div id="uLista" class="nota">…</div>
+      <form id="fUtente" autocomplete="off">
+        <label>Nome utente<input name="pin_user" autocomplete="off" placeholder="es. mario"></label>
+        <label>Password <small>(almeno 6 caratteri)</small>
+          <input name="pin_pass" type="password" autocomplete="new-password"></label>
+        <div class="riga"><button>Aggiungi utente</button></div>
+        <p class="err" id="eUtente"></p>
+      </form>
+    </div>
+  </section>
+
+  <section class="scheda">
     <h2>Password della placca</h2>
     <form class="fDev" data-dev="placca" autocomplete="off">
       <label>Password attuale<input name="attuale" type="password"></label>
@@ -284,6 +308,27 @@
     $('#vPanel').classList.remove('nascosto');
     await caricaStato();
     caricaRete();
+    caricaUtenti();
+  }
+  async function caricaUtenti(){
+    let r;
+    try{ r=json(await invia({op:'admin_utenti'})); }
+    catch(e){ if(/admin/i.test(e.message)){ scaduto(); return;} $('#uLista').textContent='(non disponibile)'; return; }
+    const badge=$('#uPlacca');
+    badge.textContent=r.placca_impostata?'impostata':'non impostata';
+    badge.className='stato '+(r.placca_impostata?'on':'off');
+    const box=$('#uLista'); box.textContent='';
+    if(!r.utenti||!r.utenti.length){
+      box.textContent='Nessun utente: la pagina dei PIN chiede direttamente la password della placca.'; return; }
+    r.utenti.forEach(u=>{
+      const row=document.createElement('div'); row.className='riga'; row.style.marginTop='8px';
+      const nome=document.createElement('span'); nome.textContent=u.user; nome.style.flex='1';
+      const del=document.createElement('button'); del.type='button'; del.className='ghost'; del.textContent='Rimuovi';
+      del.addEventListener('click',proteggi(async()=>{
+        if(!confirm('Rimuovere l’utente «'+u.user+'»?'))return;
+        await invia({op:'admin_utente_del',pin_user:u.user}); await caricaUtenti(); avviso('Utente rimosso','ok'); }));
+      row.append(nome,del); box.append(row);
+    });
   }
   async function caricaRete(){
     let r;
@@ -437,6 +482,20 @@
     await invia({op:'admin_cred',nuovo_user:f.utente.value,nuova_pass:f.password.value});
     f.reset(); avviso('Credenziali del pannello aggiornate','ok'); }));
 
+  // pagina dei PIN: password della placca memorizzata sul Pi + utenti propri di /
+  $('#fPlaccaCred').addEventListener('submit',proteggi(async ev=>{ ev.preventDefault();
+    const f=ev.currentTarget; $('#ePlaccaCred').textContent='';
+    if(!f.placca_pass.value){ $('#ePlaccaCred').textContent='Scrivi la password della placca'; return; }
+    await invia({op:'admin_placca_pass',placca_pass:f.placca_pass.value});
+    f.reset(); await caricaUtenti(); avviso('Password della placca salvata','ok'); }));
+  $('#fUtente').addEventListener('submit',proteggi(async ev=>{ ev.preventDefault();
+    const f=ev.currentTarget, err=$('#eUtente');
+    if(!/^[0-9A-Za-z._-]{1,32}$/.test(f.pin_user.value)){ err.textContent='Nome utente: lettere, cifre, . _ -'; return; }
+    if(f.pin_pass.value.length<6){ err.textContent='La password: almeno 6 caratteri'; return; }
+    err.textContent='';
+    await invia({op:'admin_utente_add',pin_user:f.pin_user.value,pin_pass:f.pin_pass.value});
+    f.reset(); await caricaUtenti(); avviso('Utente aggiunto','ok'); }));
+
   // password placca (login sulla placca + cambio) e monitor (dal server)
   async function cambiaPlacca(att,nuova){
     const j=json(await invia({op:'login',user:'admin',hash:md5(att)}));
@@ -456,7 +515,9 @@
     if(!reg[0].test(f.nuova.value)){ err.textContent='La nuova password: '+reg[1]; return; }
     if(f.nuova.value!==f.ripeti.value){ err.textContent='Le due nuove non coincidono'; return; }
     err.textContent='';
-    await (dev==='placca'?cambiaPlacca:cambiaMonitor)(f.attuale.value,f.nuova.value);
+    const nuova=f.nuova.value;
+    await (dev==='placca'?cambiaPlacca:cambiaMonitor)(f.attuale.value,nuova);
+    if(dev==='placca'){ try{ await invia({op:'admin_placca_pass',placca_pass:nuova}); await caricaUtenti(); }catch(_){} }
     f.reset(); avviso('Password '+dev+' cambiata','ok'); })));
 
   $('#bAgg').addEventListener('click',proteggi(async()=>{

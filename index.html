@@ -179,12 +179,12 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
     <h2>Accesso alla placca</h2>
     <form id="fAccesso">
       <label>Utente<input name="user" value="admin" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
-      <label>Password del web della placca<input name="pass" type="password" autocomplete="current-password" required></label>
+      <label>Password<input name="pass" type="password" autocomplete="current-password" required></label>
       <label class="spunta"><input type="checkbox" name="ricorda" checked> Ricorda su questo dispositivo</label>
       <p class="errore" id="eAccesso" role="alert"></p>
       <button class="btn primario largo">Entra</button>
     </form>
-    <p class="nota">La password non resta salvata in chiaro: il browser conserva solo la sua impronta (md5), cioè quello che chiede la placca. "Esci" la cancella.</p>
+    <p class="nota">Usa il tuo utente della pagina (creato in <code>/admin</code>). Se non è stato creato nessun utente, entra con <strong>admin</strong> e la password della placca. "Esci" cancella le credenziali da questo dispositivo.</p>
   </section>
 
   <section id="vApp" hidden>
@@ -399,7 +399,7 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
   const GIORNI = [[1, 'L', 'lunedì'], [2, 'M', 'martedì'], [3, 'M', 'mercoledì'], [4, 'G', 'giovedì'],
     [5, 'V', 'venerdì'], [6, 'S', 'sabato'], [0, 'D', 'domenica']];
   const BREVI = ['dom', 'lun', 'mar', 'mer', 'gio', 'ven', 'sab'];
-  const S = { user: 'admin', hash: '', sid: '', persone: [], fissi: [], card: null, mostra: false, persona: null, fisso: null };
+  const S = { user: 'admin', pass: '', sid: '', persone: [], fissi: [], card: null, mostra: false, persona: null, fisso: null };
 
   // ---------- md5 (la placca vuole md5 della password; il browser non lo offre) ----------
   function md5(testo) {
@@ -437,13 +437,13 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
     for (const nome of ['sessionStorage', 'localStorage']) {
       try {
         const v = JSON.parse(archivio(nome).getItem(CHIAVE) || 'null');
-        if (v && v.user && /^[0-9a-f]{32}$/.test(v.hash)) return v;
+        if (v && v.user && typeof v.pass === 'string' && v.pass) return v;
       } catch (e) { /* niente di salvato */ }
     }
     return null;
   }
   function salvaCredenziali(ricorda) {
-    const v = JSON.stringify({ user: S.user, hash: S.hash });
+    const v = JSON.stringify({ user: S.user, pass: S.pass });
     try { archivio(ricorda ? 'localStorage' : 'sessionStorage').setItem(CHIAVE, v); } catch (e) { /* non salvabile */ }
     try { archivio(ricorda ? 'sessionStorage' : 'localStorage').removeItem(CHIAVE); } catch (e) { /* idem */ }
   }
@@ -467,7 +467,7 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
 
   async function accedi() {
     let t;
-    try { t = await invia({ op: 'login', user: S.user, hash: S.hash }); }
+    try { t = await invia({ op: 'login', user: S.user, pass: S.pass }); }
     catch (e) { if (e instanceof ErroreAccesso) throw new Error('Utente o password non corretti'); throw e; }
     const j = json(t), sid = j && j.data && j.data.SessionID;
     if (!sid) throw new Error('Utente o password non corretti');
@@ -1223,8 +1223,8 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
       await occupato(() => (dev === 'monitor' ? cambiaSuMonitor : cambiaSuPlacca)(attuale, nuova, sbagliata));
     } catch (e) { err.textContent = e.message; return; }
     f.reset();
-    if (dev === 'placca') {                 // la pagina rientra con la nuova password
-      S.hash = md5(nuova); S.sid = '';
+    if (dev === 'placca') {                 // senza account la pagina rientra con la nuova password
+      S.pass = nuova; S.sid = '';           // con account la password della placca va aggiornata anche in /admin
       if (leggiCredenziali()) salvaCredenziali(ricordato());
     }
     avviso('Password ' + (dev === 'monitor' ? 'del monitor' : 'della placca') + ' cambiata', 'ok');
@@ -1241,10 +1241,10 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
     const f = ev.currentTarget;
     $('#eAccesso').textContent = '';
     S.user = f.user.value.trim() || 'admin';
-    S.hash = md5(f.pass.value);
+    S.pass = f.pass.value;
     S.sid = '';
     try { await occupato(async () => { await accedi(); await caricaTutto(); }); }
-    catch (e) { S.hash = ''; $('#eAccesso').textContent = e.message; return; }
+    catch (e) { S.pass = ''; $('#eAccesso').textContent = e.message; return; }
     salvaCredenziali(f.ricorda.checked);
     f.pass.value = '';
     mostra('app');
@@ -1307,7 +1307,7 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
     document.querySelectorAll('[data-chiudi]').forEach((b) => b.addEventListener('click', () => b.closest('dialog').close()));
     document.querySelectorAll('dialog').forEach((d) => d.addEventListener('click', (ev) => { if (ev.target === d) d.close(); }));
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden && S.hash && !$('#vApp').hidden && !document.querySelector('dialog[open]')) prova(caricaTutto);
+      if (!document.hidden && S.pass && !$('#vApp').hidden && !document.querySelector('dialog[open]')) prova(caricaTutto);
     });
   }
   async function avvio() {
@@ -1322,10 +1322,10 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
     }
     const c = leggiCredenziali();
     if (c) {
-      S.user = c.user; S.hash = c.hash;
+      S.user = c.user; S.pass = c.pass;
       $('#fAccesso').user.value = c.user;
       try { await occupato(async () => { await accedi(); await caricaTutto(); }); mostra('app'); return; }
-      catch (e) { S.hash = ''; $('#eAccesso').textContent = e.message; }
+      catch (e) { S.pass = ''; $('#eAccesso').textContent = e.message; }
     }
     mostra('accesso');
   }
