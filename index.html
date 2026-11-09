@@ -162,8 +162,14 @@ textarea { display: block; width: 100%; margin-top: 10px; padding: 10px 12px; bo
 .avviso.ok { border-left-color: var(--ok); }
 .avviso.err { border-left-color: var(--danger); }
 body[data-ruolo="user"] .solo-admin { display: none !important; }
-#pAdmin details { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 10px; }
-#pAdmin summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+details.scheda > summary { list-style: none; cursor: pointer; font-size: 16px; font-weight: 600;
+  display: flex; align-items: center; gap: 8px; }
+details.scheda > summary::-webkit-details-marker { display: none; }
+details.scheda > summary::after { content: "+"; margin-left: auto; color: var(--muted); font-weight: 700; font-size: 18px; }
+details.scheda[open] > summary::after { content: "\2013"; }
+details.scheda[open] > summary { margin-bottom: 14px; }
+#pAdmin #dHotspot, #pAdmin #dWifi { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+#pAdmin #dHotspot > summary, #pAdmin #dWifi > summary { cursor: pointer; font-weight: 600; padding: 2px 0; }
 #pAdmin #rReti .btn { display: block; width: 100%; text-align: left; margin-top: 6px; }
 #aggOutPi { white-space: pre-wrap; background: var(--bg); border: 1px solid var(--line);
   border-radius: 10px; padding: 12px; font-size: 13px; margin-top: 12px; max-height: 40vh; overflow: auto; }
@@ -190,12 +196,13 @@ body[data-ruolo="user"] .solo-admin { display: none !important; }
       <p class="errore" id="eAccesso" role="alert"></p>
       <button class="btn primario largo">Entra</button>
     </form>
-    <p class="nota">Usa il tuo utente della pagina (creato in <code>/admin</code>). Se non è stato creato nessun utente, entra con <strong>admin</strong> e la password della placca. "Esci" cancella le credenziali da questo dispositivo.</p>
+    <p class="nota">Entra con il tuo utente. Senza utenti creati: <strong>admin</strong> e la password della placca.</p>
   </section>
 
   <section id="vApp" hidden>
     <nav class="schede" aria-label="Sezioni">
       <button type="button" class="scheda-btn" data-pagina="pCodici" aria-pressed="true">Codici</button>
+      <button type="button" class="scheda-btn" data-pagina="pLog" aria-pressed="false">Log</button>
       <button type="button" class="scheda-btn solo-admin" data-pagina="pImpostazioni" aria-pressed="false">Impostazioni</button>
       <button type="button" class="scheda-btn solo-admin" data-pagina="pAdmin" aria-pressed="false">Admin</button>
     </nav>
@@ -224,8 +231,7 @@ body[data-ruolo="user"] .solo-admin { display: none !important; }
         <h2>Tessera master</h2>
         <span id="mStato" class="stato spento">…</span>
       </div>
-      <p class="nota">La tessera di gestione della placca («Master Card»). Il numero si legge passandola
-        sul lettore della placca, appoggiandola al telefono, o digitando il codice del monitor.</p>
+      <p class="nota">La «Master Card» della placca. Leggi il numero col lettore, col telefono (NFC) o dal monitor.</p>
       <form id="fMaster" novalidate>
         <label class="spunta"><input type="checkbox" name="attiva"> Tessera master attiva</label>
         <div id="mRiga">
@@ -250,6 +256,20 @@ body[data-ruolo="user"] .solo-admin { display: none !important; }
       <button id="bAggiorna" class="link" type="button">Aggiorna</button></p>
     </div>
 
+    <div id="pLog" hidden>
+      <section class="scheda">
+        <div class="testa">
+          <h2 id="tLog">Entrate</h2>
+          <button id="bLog" class="btn piccolo" type="button">Aggiorna</button>
+        </div>
+        <p class="nota solo-admin" id="nLog"></p>
+        <div class="riga solo-admin" style="justify-content:flex-start">
+          <button id="bLogOn" class="btn piccolo" type="button">Attiva registro</button>
+        </div>
+        <ul id="lLog" class="elenco"></ul>
+      </section>
+    </div>
+
     <div id="pImpostazioni" class="solo-admin" hidden>
       <section class="scheda">
         <div class="testa">
@@ -262,10 +282,7 @@ body[data-ruolo="user"] .solo-admin { display: none !important; }
           <button id="tFerma" class="btn piccolo pericolo" type="button">Ferma</button>
           <button id="tAggiorna" class="btn piccolo" type="button">Aggiorna stato</button>
         </div>
-        <p class="nota">Dopo un blackout lo riaccende la placca entro 5 minuti (riavvio automatico,
-          vedi TUNNEL-SUL-MONITOR.md). Se lo fermi da qui resta fermo finché non premi Avvia.
-          Nomi e percorsi si cambiano su Cloudflare (Zero Trust → Networks → Tunnels).
-          Da fuori la pagina è protetta solo dalla password della placca: tienila lunga.</p>
+        <p class="nota">Dà accesso alla pagina da fuori casa. Da fuori è protetta solo dalla password: tienila lunga.</p>
         <form id="fToken" novalidate>
           <label>Nuovo token del tunnel<input name="token" type="password" autocomplete="off" spellcheck="false" placeholder="eyJ…"></label>
           <p class="errore" id="eToken" role="alert"></p>
@@ -297,52 +314,47 @@ body[data-ruolo="user"] .solo-admin { display: none !important; }
     </div>
 
     <div id="pAdmin" class="solo-admin" hidden>
-      <section class="scheda">
-        <h2>Indirizzi</h2>
+      <details class="scheda" open>
+        <summary>Indirizzi</summary>
         <form id="fIndirizzi" novalidate>
-          <label>IP della placca <small>(sulla tua rete, es. 192.168.1.90)</small>
-            <input name="placca" inputmode="decimal" placeholder="192.168.1.90"></label>
-          <label>Web del monitor <small>(facoltativo, con https://)</small>
+          <label>IP della placca<input name="placca" inputmode="decimal" placeholder="192.168.1.90"></label>
+          <label>Web del monitor <small>(facoltativo)</small>
             <input name="monitor" placeholder="https://192.168.1.80"></label>
-          <label>Indirizzo pubblico del tunnel <small>(hostname su Cloudflare)</small>
+          <label>Indirizzo pubblico del tunnel <small>(Cloudflare)</small>
             <input name="pubblico" placeholder="citofono.esempio.com"></label>
           <p class="errore" id="eIndirizzi" role="alert"></p>
           <button class="btn primario">Salva indirizzi</button>
         </form>
-      </section>
+      </details>
 
-      <section class="scheda">
-        <div class="testa"><h2>Relay sul monitor</h2><span id="pStato" class="stato spento">…</span></div>
-        <p class="nota">Nei kit a 2 fili il monitor fa da ponte verso la placca. Il Pi avvia il relay e, se sparisce
-          (riavvio, aggiornamento), lo reinstalla e lo rimette in moto da solo.</p>
+      <details class="scheda">
+        <summary>Relay sul monitor <span id="pStato" class="stato spento">…</span></summary>
         <p class="nota" id="pInfo"></p>
         <button id="pVerifica" class="btn piccolo" type="button">Verifica / Avvia relay</button>
         <form id="fPonte" novalidate style="margin-top:12px">
           <label>Indirizzo del monitor<input name="mon_host" inputmode="decimal" placeholder="192.168.1.22"></label>
-          <label>Porta telnet del monitor <small>(di solito 9900)</small>
+          <label>Porta telnet <small>(di solito 9900)</small>
             <input name="mon_port" inputmode="numeric" placeholder="9900"></label>
           <label>Utente di manutenzione<input name="mon_user" autocomplete="off" placeholder="root"></label>
-          <label>Password di manutenzione <small>(resta solo sul Pi)</small>
-            <input name="mon_pass" type="password" autocomplete="new-password" placeholder="(vuoto = non cambiarla)"></label>
-          <label>IP della placca <small>(lato 2 fili, es. 192.168.68.70)</small>
+          <label>Password di manutenzione<input name="mon_pass" type="password" autocomplete="new-password" placeholder="(vuoto = non cambiarla)"></label>
+          <label>IP della placca <small>(lato 2 fili)</small>
             <input name="placca_ip" inputmode="decimal" placeholder="192.168.68.70"></label>
           <label>Porta del relay <small>(di solito 8070)</small>
             <input name="relay_port" inputmode="numeric" placeholder="8070"></label>
           <p class="errore" id="ePonte" role="alert"></p>
           <button class="btn primario">Salva relay</button>
         </form>
-      </section>
+      </details>
 
-      <section class="scheda">
-        <div class="testa"><h2>Rete e Wi-Fi</h2><span id="rStato" class="stato spento">…</span></div>
+      <details class="scheda">
+        <summary>Rete e Wi-Fi <span id="rStato" class="stato spento">…</span></summary>
         <p class="nota" id="rInfo"></p>
         <details id="dHotspot">
-          <summary>Hotspot di soccorso — configuralo prima che serva</summary>
-          <p class="nota">Se il Pi resta senza Wi-Fi (password cambiata, trasloco…), accende una sua rete per farti
-            rientrare dal telefono. Senza questo, l’unico recupero è la scheda SD.</p>
+          <summary>Hotspot di soccorso</summary>
+          <p class="nota">Se il Pi resta senza Wi-Fi, accende una rete sua per farti rientrare dal telefono.</p>
           <form id="fHotspot" novalidate>
             <label>Nome dell’hotspot<input name="hs_ssid" placeholder="citofono-setup"></label>
-            <label>Password dell’hotspot <small>(almeno 8 caratteri)</small>
+            <label>Password <small>(almeno 8 caratteri)</small>
               <input name="hs_pass" type="password" autocomplete="new-password" placeholder="(vuoto = non cambiarla)"></label>
             <p class="errore" id="eHotspot" role="alert"></p>
             <button class="btn piccolo primario">Salva hotspot</button>
@@ -355,60 +367,53 @@ body[data-ruolo="user"] .solo-admin { display: none !important; }
           <form id="fWifi" novalidate>
             <label>Rete<input name="ssid" placeholder="nome della rete"></label>
             <label>Password<input name="wifi_pass" type="password" autocomplete="off"></label>
-            <p class="nota">Applica-sicuro: se la nuova rete non ha Internet, il Pi torna da solo a quella di prima entro ~1 minuto.</p>
             <p class="errore" id="eWifi" role="alert"></p>
             <button class="btn piccolo primario">Collega</button>
           </form>
         </details>
-      </section>
+      </details>
 
-      <section class="scheda">
-        <h2>Pagina dei PIN — chi può entrare</h2>
-        <p class="nota">La pagina ha utenti propri, separati da placca e monitor. Il Pi entra nella placca con la
-          password qui sotto; gli utenti accedono con nome e password propri.</p>
+      <details class="scheda">
+        <summary>Utenti della pagina</summary>
         <form id="fPlaccaCred" novalidate>
-          <label>Password della placca <small>(usata dal Pi) — <span id="uPlacca" class="stato spento">…</span></small>
+          <label>Password della placca <small>— <span id="uPlacca" class="stato spento">…</span></small>
             <input name="placca_pass" type="password" autocomplete="off" placeholder="(vuoto = lasciala com’è)"></label>
           <p class="errore" id="ePlaccaCred" role="alert"></p>
           <button class="btn piccolo primario">Salva password placca</button>
         </form>
-        <div style="margin-top:16px">
-          <strong>Utenti della pagina</strong>
-          <div id="uLista" class="nota">…</div>
-          <form id="fUtente" novalidate>
-            <label>Nome utente<input name="pin_user" autocomplete="off" placeholder="es. mario"></label>
-            <label>Password <small>(almeno 6 caratteri)</small>
-              <input name="pin_pass" type="password" autocomplete="new-password"></label>
-            <label>Ruolo
-              <select name="ruolo">
-                <option value="user">utente — vede e cambia solo i PIN che gli assegni</option>
-                <option value="admin">gestore — accede anche all’Admin e gestisce tutto</option>
-              </select></label>
-            <p class="errore" id="eUtente" role="alert"></p>
-            <button class="btn piccolo primario">Aggiungi utente</button>
-          </form>
-        </div>
-      </section>
+        <div id="uLista" class="nota" style="margin-top:16px">…</div>
+        <form id="fUtente" novalidate>
+          <label>Nuovo utente<input name="pin_user" autocomplete="off" placeholder="es. mario"></label>
+          <label>Password <small>(almeno 6 caratteri)</small>
+            <input name="pin_pass" type="password" autocomplete="new-password"></label>
+          <label>Ruolo
+            <select name="ruolo">
+              <option value="user">utente — vede solo i PIN assegnati</option>
+              <option value="admin">gestore — gestisce tutto</option>
+            </select></label>
+          <p class="errore" id="eUtente" role="alert"></p>
+          <button class="btn piccolo primario">Aggiungi utente</button>
+        </form>
+      </details>
 
-      <section class="scheda">
-        <h2>Password dell’Admin</h2>
-        <p class="nota">La password di un account gestore si cambia qui sotto (vale anche per l’accesso all’Admin).</p>
+      <details class="scheda">
+        <summary>Password dell’Admin</summary>
         <form id="fCred" novalidate>
-          <label>Utente gestore <small>(lettere e cifre)</small><input name="utente" autocomplete="username"></label>
+          <label>Utente gestore<input name="utente" autocomplete="username"></label>
           <label>Nuova password <small>(almeno 12 caratteri)</small>
             <input name="password" type="password" autocomplete="new-password"></label>
           <label>Ripeti password<input name="ripeti" type="password" autocomplete="new-password"></label>
           <p class="errore" id="eCred" role="alert"></p>
           <button class="btn piccolo primario">Salva account gestore</button>
         </form>
-      </section>
+      </details>
 
-      <section class="scheda">
-        <h2>Aggiornamento</h2>
-        <p class="nota">Scarica l'ultima versione dal repository e riavvia. Il Pi lo fa anche da solo ogni notte.</p>
+      <details class="scheda">
+        <summary>Aggiornamento</summary>
+        <p class="nota">Scarica l'ultima versione e riavvia. Il Pi lo fa anche da solo ogni notte.</p>
         <button id="bAggiornaPi" class="btn piccolo" type="button">Aggiorna adesso</button>
         <pre id="aggOutPi" hidden></pre>
-      </section>
+      </details>
     </div>
   </section>
 </main>
@@ -1295,10 +1300,54 @@ body[data-ruolo="user"] .solo-admin { display: none !important; }
 
   // ---------- impostazioni: tunnel e password ----------
   function mostraPagina(id) {
-    ['pCodici', 'pImpostazioni', 'pAdmin'].forEach((p) => { $('#' + p).hidden = p !== id; });
+    ['pCodici', 'pLog', 'pImpostazioni', 'pAdmin'].forEach((p) => { $('#' + p).hidden = p !== id; });
     document.querySelectorAll('.scheda-btn').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.pagina === id)));
     if (id === 'pImpostazioni') prova(() => tunnel('stato'));
     if (id === 'pAdmin') caricaAdmin();
+    if (id === 'pLog') prova(caricaLog);
+  }
+  // ---------- registro entrate (Log) ----------
+  const campoLog = (r, re) => { for (const k in r) if (re.test(k)) return String(r[k]); return ''; };
+  function estraiRecordLog(j) {
+    const d = (j && j.data !== undefined) ? j.data : j;
+    if (Array.isArray(d)) return d;
+    if (!d || typeof d !== 'object') return [];
+    for (const k of ['list', 'logs', 'records', 'log', 'items', 'rows']) if (Array.isArray(d[k])) return d[k];
+    const idx = {};
+    for (const k in d) { const m = /^[A-Za-z]+_?(\d+)_(.+)$/.exec(k); if (m) { (idx[m[1]] = idx[m[1]] || {})[m[2]] = d[k]; } }
+    return Object.keys(idx).sort((a, b) => a - b).map((i) => idx[i]);
+  }
+  function metodoLog(r) {
+    const t = campoLog(r, /type|mode|way/i);
+    if (t === '1') return 'PIN';
+    if (t === '2') return 'HTTP';
+    if (campoLog(r, /card|tessera|rfid/i)) return 'Tessera';
+    if (t === '3' || t === '4') return 'Tessera';
+    return 'codice';
+  }
+  function disegnaLog(records) {
+    const ul = $('#lLog'); ul.textContent = '';
+    $('#tLog').textContent = 'Entrate' + (records.length ? ' (' + records.length + ')' : '');
+    if (!records.length) { ul.append(el('li', 'vuoto', S.ruolo === 'user' ? 'Nessuna tua entrata registrata.' : 'Nessuna entrata registrata. Attiva il registro qui sopra.')); return; }
+    for (const r of records) {
+      const li = el('li', 'voce'), r1 = el('div', 'riga');
+      const st = campoLog(r, /status|result|state|esito/i);
+      const ok = st === '' || Number(st) >= 0;
+      r1.append(el('strong', 'nome', metodoLog(r)), el('span', 'stato ' + (ok ? 'acceso' : 'spento'), ok ? 'aperto' : 'negato'));
+      const dett = [];
+      const chi = campoLog(r, /name|user|person/i); if (chi && chi !== 'None') dett.push(chi);
+      const rel = campoLog(r, /relay/i); if (rel !== '') dett.push(testoRele(rel));
+      const quando = campoLog(r, /time|date|data|when/i); if (quando) dett.push(quando);
+      li.append(r1, el('div', 'dettagli', dett.join(' · ')));
+      ul.append(li);
+    }
+  }
+  async function caricaLog() {
+    const j = json(await conSessione({ op: 'api', api: 'unlock_logs' }));
+    disegnaLog(estraiRecordLog(j));
+  }
+  async function attivaLog() {
+    await prova(async () => { await conSessione({ op: 'api', api: 'unlock_logs', enable: '1' }); await caricaLog(); }, 'Registro attivato');
   }
   async function tunnel(azione, extra) {
     const t = await conSessione(Object.assign({ op: 'tunnel', azione: azione }, extra || {}));
@@ -1635,6 +1684,8 @@ body[data-ruolo="user"] .solo-admin { display: none !important; }
     $('#fPlaccaCred').addEventListener('submit', salvaPlaccaPass);
     $('#fUtente').addEventListener('submit', aggiungiUtente);
     $('#bAggiornaPi').addEventListener('click', aggiornaPi);
+    $('#bLog').addEventListener('click', () => prova(caricaLog));
+    $('#bLogOn').addEventListener('click', attivaLog);
     $('#fFisso').addEventListener('submit', salvaFisso);
     $('#fFisso').addEventListener('input', aggiornaFisso);
     $('#bCopia').addEventListener('click', copia);

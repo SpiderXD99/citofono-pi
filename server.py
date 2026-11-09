@@ -329,6 +329,61 @@ def corpo_modifica_pin(sid, idx, nuovo_pin):
     return '&'.join('%s=%s' % (k, urllib.parse.quote_plus(val)) for k, val in campi)
 
 
+# --- registro sblocchi (api=unlock_logs): filtro per-utente ---
+def identificatori_utente(utente, sid):
+    """Nome, PIN e tessere delle persone di proprieta' dell'utente: servono a
+    riconoscere nel registro quali entrate sono sue."""
+    miei = [int(k) for k, v in leggi_proprieta().items() if v == utente and k.isdigit()]
+    ids = set()
+    try:
+        righe = [r for r in alla_placca('/data/users.xml', None, sid).decode('utf-8', 'replace').splitlines() if r.strip()]
+    except (OSError, Errore):
+        return ids
+    for i in miei:
+        if 0 <= i < len(righe):
+            v = dict(zip(COLONNE, (x.strip() for x in (righe[i].split(',') + [''] * len(COLONNE)))))
+            for campo in (v.get('nome', ''), v.get('pin', '')):
+                if campo and campo != 'None':
+                    ids.add(campo.lower())
+            for carta in (v.get('tessere', '') or '').replace(';', ',').split(','):
+                carta = carta.strip()
+                if carta and carta != 'None':
+                    ids.add(carta.lower())
+    return ids
+
+
+def _record_log(d):
+    """Dalla risposta di unlock_logs ricava la lista dei record, qualunque forma abbia."""
+    if isinstance(d, list):
+        return d
+    if not isinstance(d, dict):
+        return []
+    for k in ('list', 'logs', 'records', 'log', 'items', 'rows', 'data'):
+        if isinstance(d.get(k), list):
+            return d[k]
+    idx = {}                                     # forma indicizzata: prefisso_N_campo
+    for k, val in d.items():
+        m = re.match(r'[A-Za-z]+_?(\d+)_(.+)', k)
+        if m:
+            idx.setdefault(int(m.group(1)), {})[m.group(2)] = val
+    return [idx[i] for i in sorted(idx)]
+
+
+def filtra_log(grezzo, ids):
+    """Tiene solo i record che citano un identificatore dell'utente. Forma ignota o
+    nessun identificatore -> lista vuota (a un utente non si mostra mai tutto)."""
+    try:
+        j = json.loads(grezzo.decode('utf-8', 'replace'))
+    except ValueError:
+        return b'{"result":"0","data":{"list":[]}}'
+    base = j.get('data', j) if isinstance(j, dict) else j
+    tenuti = []
+    for r in _record_log(base):
+        if isinstance(r, dict) and {str(v).strip().lower() for v in r.values()} & ids:
+            tenuti.append(r)
+    return json.dumps({'result': '0', 'data': {'list': tenuti}}).encode('utf-8')
+
+
 # ---------- rete verso placca / monitor ----------
 # La web della placca e' un mini_httpd minuscolo (anche dietro il relay sul
 # monitor nei kit a 2 fili): regge male le connessioni simultanee. Quindi le
@@ -828,12 +883,17 @@ def gestisci(corpo, dal_tunnel, cookie, cookie_pin, ip):
         raise Errore(502, 'IP della placca non impostato: aprilo nel pannello admin')
     if op == 'api':
         api = campi.get('api', '')
-        if api not in ('user', 'unlock_passwd', 'password', 'card'):
+        if api not in ('user', 'unlock_passwd', 'password', 'card', 'unlock_logs'):
             raise Errore(403, 'operazione non permessa')
         if not sid:
             raise Errore(401, 'accesso richiesto')
         corpo_api = '&'.join(avanti)
-        if ruolo == 'user':                          # utente semplice: solo i PROPRI codici persona
+        if ruolo == 'user':                          # utente semplice
+            if api == 'unlock_logs':                 # legge solo le PROPRIE entrate (filtro lato server)
+                if avanti:                           # niente scritture (enable/action)
+                    raise Errore(403, 'solo lettura')
+                grezzo = alla_placca('/cgi-bin/webapi.cgi?api=unlock_logs', None, sid)
+                return js, filtra_log(grezzo, identificatori_utente(sess['user'], sid)), None
             if api != 'user':
                 raise Errore(403, 'operazione riservata al gestore')
             az = campi.get('action', '')
