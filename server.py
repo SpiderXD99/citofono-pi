@@ -48,6 +48,7 @@ PREDEFINITI = {
     'APP_DIR': '/opt/citofono',
     'ADMIN_LAN_ONLY': '0',                 # 1 = pannello admin solo da casa (LAN)
     'CONF': '/etc/citofono/citofono.conf',
+    'PONTE_CONF': '/etc/citofono/ponte.conf',
 }
 UTENTE = 'admin'                           # unico utente della placca ammesso dal proxy
 VALORE = re.compile(r'^[A-Za-z0-9%._~*()!-]*$')  # valori form (gia' url-encoded dal browser)
@@ -56,7 +57,8 @@ INOLTRATI = {'action', 'index', 'group', 'name', 'room', 'relays', 'status', 'ty
              'end_date', 'start_time', 'end_time', 'week', 'password', 'old_password',
              'new_password'}
 CAMPI_SEMPLICI = {'op', 'sid', 'api', 'user', 'hash', 'azione', 'token',
-                  'admin_user', 'admin_pass', 'nuovo_user', 'nuova_pass', 'placca', 'monitor', 'pubblico'}
+                  'admin_user', 'admin_pass', 'nuovo_user', 'nuova_pass', 'placca', 'monitor', 'pubblico',
+                  'mon_host', 'mon_port', 'mon_user', 'mon_pass', 'placca_ip', 'relay_port'}
 BLOCCATA = 'la placca ha bloccato gli accessi per qualche minuto dopo una password sbagliata: riprova tra 2-3 minuti'
 ITER = 210000                              # iterazioni PBKDF2 per la password admin
 SESSIONI = {}                              # token admin -> scadenza (epoch)
@@ -137,6 +139,29 @@ def carica_admin():
             return json.load(f)
     except (OSError, ValueError):
         return None
+
+
+def salva_ponte(agg):
+    """Scrive /etc/citofono/ponte.conf (permessi 600): credenziali del monitor e
+    parametri del relay. I segreti stanno solo qui, mai nel repo."""
+    conf = {}
+    try:
+        with open(CONF['PONTE_CONF'], encoding='utf-8') as f:
+            for riga in f:
+                riga = riga.strip()
+                if riga and not riga.startswith('#') and '=' in riga:
+                    k, v = riga.split('=', 1)
+                    conf[k.strip()] = v.strip()
+    except OSError:
+        pass
+    conf.update(agg)
+    d = os.path.dirname(CONF['PONTE_CONF'])
+    if d and not os.path.isdir(d):
+        os.makedirs(d, 0o700, exist_ok=True)
+    fd = os.open(CONF['PONTE_CONF'], os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, 'w', encoding='utf-8') as f:
+        for k, v in conf.items():
+            f.write('%s=%s\n' % (k, v))
 
 
 def salva_admin(utente, password):
@@ -445,6 +470,18 @@ def gestisci(corpo, dal_tunnel, cookie, ip):
     if op == 'admin_state':
         dati = {'placca': CONF['PLACCA'], 'monitor': CONF['MONITOR'], 'pubblico': CONF['PUBBLICO'],
                 'lan_only': CONF['ADMIN_LAN_ONLY'], 'tunnel': stato_tunnel()}
+        try:
+            import ponte
+            pc = ponte.leggi_conf(CONF['PONTE_CONF'])
+            dati['ponte'] = {
+                'mon_host': pc.get('MON_HOST', ''), 'mon_port': pc.get('MON_PORT', '9900'),
+                'mon_user': pc.get('MON_USER', 'root'), 'placca_ip': pc.get('PLACCA_IP', ''),
+                'relay_port': pc.get('RELAY_PORT', '8070'),
+                'pass_impostata': bool(pc.get('MON_PASS', '')),
+                'attivo': bool(pc.get('MON_HOST')) and ponte._porta_viva(
+                    pc.get('MON_HOST'), pc.get('RELAY_PORT', '8070'), timeout=2)}
+        except Exception:
+            dati['ponte'] = None
         return js, json.dumps(dati).encode('utf-8'), None
     if op == 'admin_save':
         agg = {}
@@ -475,6 +512,36 @@ def gestisci(corpo, dal_tunnel, cookie, ip):
             raise Errore(400, 'la password admin deve avere almeno 12 caratteri')
         salva_admin(u, p)
         return js, b'{"ok":1}', None
+    if op == 'admin_relay_save':
+        agg = {}
+        regole = {
+            'mon_host': (r'[0-9A-Za-z.-]{1,253}', 'IP/host del monitor non valido'),
+            'mon_port': (r'[0-9]{1,5}', 'porta telnet non valida'),
+            'mon_user': (r'[0-9A-Za-z_.-]{1,32}', 'utente non valido'),
+            'placca_ip': (r'[0-9.]{1,15}', 'IP della placca non valido'),
+            'relay_port': (r'[0-9]{1,5}', 'porta del relay non valida'),
+        }
+        for campo, (rx, msg) in regole.items():
+            if campo in campi:
+                v = urllib.parse.unquote_plus(campi.get(campo, ''))
+                if v and not re.fullmatch(rx, v):
+                    raise Errore(400, msg)
+                if v:
+                    agg[campo.upper()] = v
+        if 'mon_pass' in campi:
+            pw = urllib.parse.unquote_plus(campi.get('mon_pass', ''))
+            if pw:                              # vuoto = non cambiare la password salvata
+                agg['MON_PASS'] = pw
+        if agg:
+            salva_ponte(agg)
+        return js, b'{"ok":1}', None
+    if op == 'admin_relay':
+        import ponte
+        try:
+            esito = ponte.assicura_relay(ponte.leggi_conf(CONF['PONTE_CONF']))
+        except (ponte.ErrorePonte, OSError) as e:
+            raise Errore(502, str(e))
+        return js, json.dumps({'ok': 1, 'esito': esito}).encode('utf-8'), None
     if op == 'admin_update':
         return testo, aggiorna_dal_repo().encode('utf-8') or b'aggiornato\n', None
     if op == 'tunnel':

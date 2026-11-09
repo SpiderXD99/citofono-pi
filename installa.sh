@@ -73,12 +73,14 @@ fi
 [ -f "$ETC/tunnel.env" ] || { printf 'TUNNEL_TOKEN=\n' > "$ETC/tunnel.env"; chmod 600 "$ETC/tunnel.env"; }
 
 echo "== servizi systemd =="
-for U in citofono.service citofono-tunnel.service citofono-update.service citofono-update.timer; do
+for U in citofono.service citofono-tunnel.service citofono-update.service citofono-update.timer ponte.service ponte.timer; do
 	sed "s#/opt/citofono#$APP#g" "$APP/$U" > "/etc/systemd/system/$U"
 done
 systemctl daemon-reload
 systemctl enable --now citofono.service
 systemctl enable --now citofono-update.timer
+# il relay sul monitor viene (ri)avviato automaticamente ogni pochi minuti
+systemctl enable --now ponte.timer
 # il tunnel si avvia dal pannello (serve prima il token)
 
 IP=$(hostname -I 2>/dev/null | awk '{print $1}')

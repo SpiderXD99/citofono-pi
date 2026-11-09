@@ -127,6 +127,30 @@
   </section>
 
   <section class="scheda">
+    <h2>Relay sul monitor <span id="pStato" class="stato off">…</span></h2>
+    <p class="nota">Nei kit a 2 fili il monitor fa da ponte verso la placca. Il Pi avvia il relay
+      sul monitor e, se sparisce (riavvio, aggiornamento), lo reinstalla e lo rimette in moto da solo.</p>
+    <p class="nota" id="pInfo"></p>
+    <div class="riga"><button id="pVerifica" class="sec" type="button">Verifica / Avvia relay</button></div>
+    <form id="fPonte" autocomplete="off" style="margin-top:1em">
+      <label>Indirizzo del monitor <small>(sulla tua rete, es. 192.168.1.22)</small>
+        <input name="mon_host" inputmode="decimal" placeholder="192.168.1.22"></label>
+      <label>Porta telnet del monitor <small>(di solito 9900)</small>
+        <input name="mon_port" inputmode="numeric" placeholder="9900"></label>
+      <label>Utente di manutenzione del monitor
+        <input name="mon_user" autocomplete="off" placeholder="root"></label>
+      <label>Password di manutenzione <small>(data dal costruttore; resta solo sul Pi)</small>
+        <input name="mon_pass" type="password" autocomplete="new-password" placeholder="(lascia vuoto per non cambiarla)"></label>
+      <label>IP della placca <small>(lato 2 fili, es. 192.168.68.70)</small>
+        <input name="placca_ip" inputmode="decimal" placeholder="192.168.68.70"></label>
+      <label>Porta del relay <small>(di solito 8070)</small>
+        <input name="relay_port" inputmode="numeric" placeholder="8070"></label>
+      <div class="riga"><button>Salva</button></div>
+      <p class="err" id="ePonte"></p>
+    </form>
+  </section>
+
+  <section class="scheda">
     <h2>Password del pannello</h2>
     <form id="fCred" autocomplete="off">
       <label>Nuovo utente <small>(lettere e cifre)</small><input name="utente" autocomplete="username"></label>
@@ -243,6 +267,22 @@
     pubblico=s.pubblico||'';
     $('#fIndirizzi').pubblico.value=pubblico;
     disegnaTunnel(s.tunnel||{});
+    disegnaPonte(s.ponte);
+  }
+  function disegnaPonte(p){
+    const st=$('#pStato'), info=$('#pInfo'), f=$('#fPonte');
+    if(!p){ st.textContent='n/d'; st.className='stato off'; info.textContent='modulo relay non disponibile'; return; }
+    if(!f.mon_host.value) f.mon_host.value=p.mon_host||'';
+    if(!f.mon_port.value) f.mon_port.value=p.mon_port||'9900';
+    if(!f.mon_user.value) f.mon_user.value=p.mon_user||'root';
+    if(!f.placca_ip.value) f.placca_ip.value=p.placca_ip||'';
+    if(!f.relay_port.value) f.relay_port.value=p.relay_port||'8070';
+    st.textContent=p.attivo?'attivo':'fermo'; st.className='stato '+(p.attivo?'on':'off');
+    const n=[];
+    if(!p.pass_impostata) n.push('imposta le credenziali del monitor qui sotto');
+    else if(p.attivo) n.push('la porta del relay risponde');
+    else n.push('premi «Verifica / Avvia relay»');
+    info.textContent=n.join(' · ');
   }
   function disegnaTunnel(t){
     const info=[]; let testo='fermo',cls='off';
@@ -299,6 +339,17 @@
     const pu=f.pubblico.value.trim().replace(/^https?:\/\//,'').replace(/\/.*$/,'');
     await invia({op:'admin_save',placca:f.placca.value.trim(),monitor:f.monitor.value.trim(),pubblico:pu});
     await caricaStato(); avviso('Indirizzi salvati','ok'); }));
+
+  $('#pVerifica').addEventListener('click',proteggi(async()=>{
+    const b=$('#pVerifica'); b.disabled=true; const t=b.textContent; b.textContent='Attendere…';
+    try{ const r=json(await invia({op:'admin_relay'})); avviso(r.esito||'Relay a posto','ok'); await caricaStato(); }
+    finally{ b.disabled=false; b.textContent=t; } }));
+  $('#fPonte').addEventListener('submit',proteggi(async ev=>{ ev.preventDefault();
+    const f=ev.currentTarget; $('#ePonte').textContent='';
+    await invia({op:'admin_relay_save', mon_host:f.mon_host.value.trim(), mon_port:f.mon_port.value.trim(),
+      mon_user:f.mon_user.value.trim(), mon_pass:f.mon_pass.value, placca_ip:f.placca_ip.value.trim(),
+      relay_port:f.relay_port.value.trim()});
+    f.mon_pass.value=''; await caricaStato(); avviso('Impostazioni del relay salvate','ok'); }));
 
   $('#fCred').addEventListener('submit',proteggi(async ev=>{ ev.preventDefault();
     const f=ev.currentTarget,err=$('#eCred');

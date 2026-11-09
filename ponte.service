@@ -1,0 +1,10 @@
+[Unit]
+Description=Citofono - assicura il relay sul monitor
+After=network-online.target citofono.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# entra nel monitor e, se il relay e' spento o sparito, lo (re)installa e lo avvia.
+# Se il monitor non risponde esce con errore: il timer riprova piu' tardi.
+ExecStart=/usr/bin/python3 /opt/citofono/ponte.py
