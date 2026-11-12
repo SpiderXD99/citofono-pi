@@ -590,6 +590,31 @@ def password_monitor(vecchia, nuova):
 
 
 # ---------- aggiornamento dal repository ----------
+def autorizza_bearer(auth):
+    """True se 'Authorization: Bearer <password>' corrisponde a un account di ruolo
+    admin (o, finche' non ne esiste nessuno, alla password del pannello). Nessun
+    token dedicato: si riusano le credenziali gestore gia' esistenti."""
+    if not auth or not auth.startswith('Bearer '):
+        return False
+    pw = auth[7:].strip()
+    if not pw:
+        return False
+    for u in carica_utenti():
+        if u.get('ruolo', 'user') == 'admin':
+            h = hashlib.pbkdf2_hmac('sha256', pw.encode('utf-8'),
+                                    bytes.fromhex(u['salt']), u.get('iter', ITER))
+            if hmac.compare_digest(h.hex(), u['hash']):
+                return True
+    if not esiste_admin():
+        a = carica_admin()
+        if a:
+            h = hashlib.pbkdf2_hmac('sha256', pw.encode('utf-8'),
+                                    bytes.fromhex(a['salt']), a.get('iter', ITER))
+            if hmac.compare_digest(h.hex(), a['hash']):
+                return True
+    return False
+
+
 def aggiorna_dal_repo():
     d = CONF['APP_DIR']
     try:
@@ -1005,8 +1030,27 @@ class Gestore(http.server.BaseHTTPRequestHandler):
         except OSError:
             return self.manda(500, 'text/plain; charset=utf-8', b'pagina mancante\n')
 
+    def _aggiorna_endpoint(self):
+        """Endpoint dedicato: fa SOLO git pull + riavvio. Autenticazione Bearer
+        con una password di ruolo admin (Authorization: Bearer <password>)."""
+        ip = self.headers.get('Cf-Connecting-Ip') or self.client_address[0]
+        if bloccato(ip):
+            return self.manda(429, 'text/plain; charset=utf-8', b'troppi tentativi: riprova tra qualche minuto\n')
+        if not autorizza_bearer(self.headers.get('Authorization', '')):
+            segna_fallito(ip)
+            return self.manda(401, 'text/plain; charset=utf-8', b'non autorizzato\n',
+                              {'WWW-Authenticate': 'Bearer'})
+        TENTATIVI.pop(ip, None)
+        try:
+            aggiorna_dal_repo()
+        except Errore as e:
+            return self.manda(e.stato, 'text/plain; charset=utf-8', (e.testo + '\n').encode('utf-8'))
+        return self.manda(200, 'text/plain; charset=utf-8', b'aggiornamento avviato\n')
+
     def do_GET(self):
         p = self.path.split('?', 1)[0]
+        if p in ('/aggiorna', '/update') and self.command != 'HEAD':
+            return self._aggiorna_endpoint()
         # pagina dei PIN sulla radice (/); i vecchi percorsi /data/pin restano come alias
         if p in ('/data', '/data/', '/data/pin'):
             return self.manda(302, 'text/plain; charset=utf-8', b'', {'Location': '/'})
@@ -1031,7 +1075,18 @@ class Gestore(http.server.BaseHTTPRequestHandler):
     do_HEAD = do_GET
 
     def do_POST(self):
-        if self.path.split('?', 1)[0] not in ('/api.cgi', '/data/pin/api.cgi'):
+        p = self.path.split('?', 1)[0]
+        if p in ('/aggiorna', '/update'):
+            try:
+                n = int(self.headers.get('Content-Length') or 0)
+            except ValueError:
+                n = 0
+            if n > 1048576:
+                return self.manda(413, 'text/plain; charset=utf-8', b'richiesta troppo grande\n')
+            if n:
+                self.rfile.read(n)                 # scarta l'eventuale corpo (es. payload webhook)
+            return self._aggiorna_endpoint()
+        if p not in ('/api.cgi', '/data/pin/api.cgi'):
             return self.manda(404, 'text/plain; charset=utf-8', b'non trovato\n')
         try:
             n = int(self.headers.get('Content-Length', ''))
