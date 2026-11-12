@@ -66,7 +66,7 @@ CAMPI_SEMPLICI = {'op', 'sid', 'api', 'user', 'hash', 'azione', 'token',
                   'admin_user', 'admin_pass', 'nuovo_user', 'nuova_pass', 'placca', 'monitor', 'pubblico',
                   'mon_host', 'mon_port', 'mon_user', 'mon_pass', 'placca_ip', 'relay_port',
                   'ssid', 'wifi_pass', 'hs_ssid', 'hs_pass',
-                  'pass', 'pin_user', 'pin_pass', 'placca_pass', 'ruolo'}
+                  'pass', 'nuova', 'pin_user', 'pin_pass', 'placca_pass', 'ruolo'}
 BLOCCATA ='la placca ha bloccato gli accessi per qualche minuto dopo una password sbagliata: riprova tra 2-3 minuti'
 ITER = 210000                              # iterazioni PBKDF2 per la password admin
 SESSIONI = {}                              # token admin -> scadenza (epoch)
@@ -238,6 +238,36 @@ def verifica_utente(utente, password):
                                     bytes.fromhex(u['salt']), u.get('iter', ITER))
             return hmac.compare_digest(h.hex(), u['hash'])
     return False
+
+
+def cambia_password_utente(utente, nuova):
+    """Reimposta la password di un account esistente, conservandone il ruolo."""
+    lista = carica_utenti()
+    for u in lista:
+        if u.get('user') == utente:
+            salt = secrets.token_bytes(16)
+            u['iter'] = ITER
+            u['salt'] = salt.hex()
+            u['hash'] = hashlib.pbkdf2_hmac('sha256', nuova.encode('utf-8'), salt, ITER).hex()
+            salva_utenti(lista)
+            return True
+    return False
+
+
+def imposta_ruolo(utente, ruolo):
+    """Cambia il ruolo di un account. Ritorna 'ok', 'inesistente' o 'ultimo_admin'
+    (non si puo' lasciare la pagina senza nessun gestore)."""
+    ruolo = 'admin' if ruolo == 'admin' else 'user'
+    lista = carica_utenti()
+    voce = next((u for u in lista if u.get('user') == utente), None)
+    if not voce:
+        return 'inesistente'
+    if voce.get('ruolo', 'user') == 'admin' and ruolo == 'user':
+        if not any(u.get('ruolo', 'user') == 'admin' and u.get('user') != utente for u in lista):
+            return 'ultimo_admin'
+    voce['ruolo'] = ruolo
+    salva_utenti(lista)
+    return 'ok'
 
 
 def salva_placca_hash(md5):
@@ -779,7 +809,7 @@ def gestisci(corpo, dal_tunnel, cookie, cookie_pin, ip):
             return js, b'{"ok":1}', None
         except rete.ErroreRete as e:
             raise Errore(502, str(e))
-    if op in ('admin_utenti', 'admin_utente_add', 'admin_utente_del', 'admin_placca_pass'):
+    if op in ('admin_utenti', 'admin_utente_add', 'admin_utente_del', 'admin_utente_ruolo', 'admin_placca_pass'):
         if op == 'admin_utenti':
             lista = [{'user': u.get('user', ''), 'ruolo': u.get('ruolo', 'user')} for u in carica_utenti()]
             return js, json.dumps({'utenti': lista,
@@ -800,6 +830,14 @@ def gestisci(corpo, dal_tunnel, cookie, cookie_pin, ip):
             ruolo = campi.get('ruolo', 'user')
             aggiungi_utente(u, pw, 'admin' if ruolo == 'admin' else 'user')
             return js, b'{"ok":1}', None
+        if op == 'admin_utente_ruolo':
+            u = urllib.parse.unquote_plus(campi.get('pin_user', ''))
+            esito = imposta_ruolo(u, campi.get('ruolo', 'user'))
+            if esito == 'inesistente':
+                raise Errore(404, 'account inesistente')
+            if esito == 'ultimo_admin':
+                raise Errore(400, 'deve restare almeno un gestore')
+            return js, b'{"ok":1}', None
         elimina_utente(urllib.parse.unquote_plus(campi.get('pin_user', '')))
         return js, b'{"ok":1}', None
     if op == 'admin_update':
@@ -817,6 +855,19 @@ def gestisci(corpo, dal_tunnel, cookie, cookie_pin, ip):
         if sess:
             return js, json.dumps({'user': sess['user'], 'ruolo': sess['ruolo']}).encode('utf-8'), None
         return js, json.dumps({'user': '', 'ruolo': 'admin'}).encode('utf-8'), None
+    if op == 'cambia_password':                   # ognuno cambia la password del PROPRIO account
+        if not sess:
+            raise Errore(401, 'accesso richiesto')
+        if sess['user'] not in [u.get('user') for u in carica_utenti()]:
+            raise Errore(400, 'account non registrato: crealo nella scheda Admin')
+        vecchia = urllib.parse.unquote_plus(campi.get('pass', ''))
+        nuova = urllib.parse.unquote_plus(campi.get('nuova', ''))
+        if not verifica_utente(sess['user'], vecchia):
+            raise Errore(403, 'password attuale errata')
+        if len(nuova) < 6:
+            raise Errore(400, 'la nuova password deve avere almeno 6 caratteri')
+        cambia_password_utente(sess['user'], nuova)
+        return js, b'{"ok":1}', None
     if op == 'proprieta':                        # mappa proprieta' + utenti assegnabili (solo gestore)
         if not admin_pagina:
             raise Errore(403, 'riservato al gestore')

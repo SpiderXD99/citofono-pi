@@ -254,6 +254,18 @@ details.scheda[open] > summary { margin-bottom: 14px; }
 
     <p class="nota centro">Date e orari seguono l'orologio della placca: controlla che sia giusto.
       <button id="bAggiorna" class="link" type="button">Aggiorna</button></p>
+
+    <details class="scheda" id="sMioAccount" hidden>
+      <summary>Il mio account</summary>
+      <form id="fMiaPass" novalidate>
+        <label>Password attuale<input name="attuale" type="password" autocomplete="current-password"></label>
+        <label>Nuova password <small>(almeno 6 caratteri)</small>
+          <input name="nuova" type="password" autocomplete="new-password"></label>
+        <label>Ripeti la nuova<input name="ripeti" type="password" autocomplete="new-password"></label>
+        <p class="errore" id="eMiaPass" role="alert"></p>
+        <button class="btn piccolo primario">Cambia la mia password</button>
+      </form>
+    </details>
     </div>
 
     <div id="pLog" hidden>
@@ -527,7 +539,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
   const GIORNI = [[1, 'L', 'lunedì'], [2, 'M', 'martedì'], [3, 'M', 'mercoledì'], [4, 'G', 'giovedì'],
     [5, 'V', 'venerdì'], [6, 'S', 'sabato'], [0, 'D', 'domenica']];
   const BREVI = ['dom', 'lun', 'mar', 'mer', 'gio', 'ven', 'sab'];
-  const S = { user: 'admin', pass: '', sid: '', ruolo: 'admin', bootstrap: false, assegnabili: [], proprieta: {},
+  const S = { user: 'admin', pass: '', sid: '', ruolo: 'admin', account: '', bootstrap: false, assegnabili: [], proprieta: {},
     persone: [], fissi: [], card: null, mostra: false, persona: null, fisso: null };
 
   // ---------- md5 (la placca vuole md5 della password; il browser non lo offre) ----------
@@ -663,9 +675,11 @@ details.scheda[open] > summary { margin-bottom: 14px; }
   }
   // ruolo della sessione e (per il gestore) utenti assegnabili + mappa di proprieta'
   async function chiStato() {
-    try { S.ruolo = (json(await invia({ op: 'chisono' })).ruolo) || 'admin'; }
-    catch (e) { S.ruolo = 'admin'; }
+    let j = { ruolo: 'admin', user: '' };
+    try { j = json(await invia({ op: 'chisono' })); } catch (e) { /* compat: puo' non esistere */ }
+    S.ruolo = j.ruolo || 'admin'; S.account = j.user || '';
     document.body.dataset.ruolo = S.ruolo;
+    const mio = $('#sMioAccount'); if (mio) mio.hidden = !S.account;   // solo chi ha un account proprio
     S.assegnabili = []; S.proprieta = {};
     if (S.ruolo !== 'user') {
       try { const p = json(await invia({ op: 'proprieta' })); S.assegnabili = p.utenti || []; S.proprieta = p.mappa || {}; }
@@ -1514,12 +1528,22 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     r.utenti.forEach((u) => {
       const row = el('div', 'riga'); row.style.marginTop = '8px';
       const nome = el('span', null, u.user); nome.style.flex = '1';
-      const tag = el('span', 'stato ' + (u.ruolo === 'admin' ? 'acceso' : 'spento'), u.ruolo === 'admin' ? 'gestore' : 'utente');
+      const sel = el('select'); sel.title = 'Ruolo dell’account';
+      sel.innerHTML = '<option value="user">utente</option><option value="admin">gestore</option>';
+      sel.value = u.ruolo === 'admin' ? 'admin' : 'user';
+      if (u.user === S.account) { sel.disabled = true; sel.title = 'il tuo account'; }
+      sel.addEventListener('change', async () => {
+        const nuovo = sel.value;
+        if (!confirm('Rendere «' + u.user + '» ' + (nuovo === 'admin' ? 'gestore' : 'utente') + '?')) { await caricaUtentiAdmin(); return; }
+        try { await occupato(() => invia({ op: 'admin_utente_ruolo', pin_user: u.user, ruolo: nuovo })); avviso('Ruolo aggiornato', 'ok'); }
+        catch (e) { avviso(e.message, 'err'); }
+        await caricaUtentiAdmin(); try { await chiStato(); } catch (e) { /* aggiorna assegnabili */ }
+      });
       const del = bottone('Rimuovi', () => {
         if (!confirm('Rimuovere l’utente «' + u.user + '»?')) return;
         prova(async () => { await invia({ op: 'admin_utente_del', pin_user: u.user }); await caricaUtentiAdmin(); }, 'Utente rimosso');
       }, 'pericolo');
-      row.append(nome, tag, del); box.append(row);
+      row.append(nome, sel, del); box.append(row);
     });
   }
   async function salvaIndirizzi(ev) {
@@ -1568,6 +1592,15 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     try { await occupato(() => invia({ op: 'admin_hotspot_save', hs_ssid: f.hs_ssid.value.trim(), hs_pass: f.hs_pass.value })); }
     catch (e) { $('#eHotspot').textContent = e.message; return; }
     f.hs_pass.value = ''; await caricaReteAdmin(); avviso('Hotspot di soccorso configurato', 'ok');
+  }
+  async function salvaMiaPassword(ev) {
+    ev.preventDefault(); const f = ev.currentTarget, err = $('#eMiaPass');
+    if (f.nuova.value.length < 6) { err.textContent = 'La nuova password deve avere almeno 6 caratteri'; return; }
+    if (f.nuova.value !== f.ripeti.value) { err.textContent = 'Le due password non coincidono'; return; }
+    err.textContent = '';
+    try { await occupato(() => invia({ op: 'cambia_password', pass: f.attuale.value, nuova: f.nuova.value })); }
+    catch (e) { err.textContent = e.message; return; }
+    f.reset(); avviso('Password dell’account cambiata', 'ok');
   }
   async function salvaCredGestore(ev) {
     ev.preventDefault(); const f = ev.currentTarget, err = $('#eCred');
@@ -1681,6 +1714,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     $('#fWifi').addEventListener('submit', connettiWifi);
     $('#fHotspot').addEventListener('submit', salvaHotspot);
     $('#fCred').addEventListener('submit', salvaCredGestore);
+    $('#fMiaPass').addEventListener('submit', salvaMiaPassword);
     $('#fPlaccaCred').addEventListener('submit', salvaPlaccaPass);
     $('#fUtente').addEventListener('submit', aggiungiUtente);
     $('#bAggiornaPi').addEventListener('click', aggiornaPi);
