@@ -834,7 +834,8 @@ def gestisci(corpo, dal_tunnel, cookie, cookie_pin, ip):
             return js, b'{"ok":1}', None
         except rete.ErroreRete as e:
             raise Errore(502, str(e))
-    if op in ('admin_utenti', 'admin_utente_add', 'admin_utente_del', 'admin_utente_ruolo', 'admin_placca_pass'):
+    if op in ('admin_utenti', 'admin_utente_add', 'admin_utente_del', 'admin_utente_ruolo',
+              'admin_utente_pass', 'admin_placca_pass'):
         if op == 'admin_utenti':
             lista = [{'user': u.get('user', ''), 'ruolo': u.get('ruolo', 'user')} for u in carica_utenti()]
             return js, json.dumps({'utenti': lista,
@@ -862,6 +863,14 @@ def gestisci(corpo, dal_tunnel, cookie, cookie_pin, ip):
                 raise Errore(404, 'account inesistente')
             if esito == 'ultimo_admin':
                 raise Errore(400, 'deve restare almeno un gestore')
+            return js, b'{"ok":1}', None
+        if op == 'admin_utente_pass':
+            u = urllib.parse.unquote_plus(campi.get('pin_user', ''))
+            pw = urllib.parse.unquote_plus(campi.get('nuova', ''))
+            if len(pw) < 6:
+                raise Errore(400, 'la password deve avere almeno 6 caratteri')
+            if not cambia_password_utente(u, pw):
+                raise Errore(404, 'account inesistente')
             return js, b'{"ok":1}', None
         elimina_utente(urllib.parse.unquote_plus(campi.get('pin_user', '')))
         return js, b'{"ok":1}', None

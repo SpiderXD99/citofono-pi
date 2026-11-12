@@ -90,6 +90,8 @@ input[type=time], input:not([type]), select {
   border: 1px solid var(--line); border-radius: 10px; background: var(--bg);
   color: var(--text); font: inherit; font-size: 16px; }
 input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+#uLista select { display: inline-block; width: auto; min-height: 36px; margin-top: 0; padding: 6px 8px; font-size: 14px; flex: 0 0 auto; }
+#uLista .riga .btn { min-height: 36px; }
 .spunta { display: flex; align-items: center; gap: 10px; color: var(--text); font-size: 15px; }
 .spunta input { width: 20px; height: 20px; margin: 0; accent-color: var(--accent); }
 .errore { color: var(--danger); font-weight: 600; min-height: 1.2em; margin: 12px 0 0; font-size: 14px; }
@@ -1539,11 +1541,17 @@ details.scheda[open] > summary { margin-bottom: 14px; }
         catch (e) { avviso(e.message, 'err'); }
         await caricaUtentiAdmin(); try { await chiStato(); } catch (e) { /* aggiorna assegnabili */ }
       });
+      const pass = bottone('Password', () => {
+        const nuova = prompt('Nuova password per «' + u.user + '» (almeno 6 caratteri):');
+        if (nuova === null) return;
+        if (nuova.length < 6) { avviso('La password deve avere almeno 6 caratteri', 'err'); return; }
+        prova(async () => { await invia({ op: 'admin_utente_pass', pin_user: u.user, nuova: nuova }); }, 'Password aggiornata');
+      });
       const del = bottone('Rimuovi', () => {
         if (!confirm('Rimuovere l’utente «' + u.user + '»?')) return;
         prova(async () => { await invia({ op: 'admin_utente_del', pin_user: u.user }); await caricaUtentiAdmin(); }, 'Utente rimosso');
       }, 'pericolo');
-      row.append(nome, sel, del); box.append(row);
+      row.append(nome, sel, pass, del); box.append(row);
     });
   }
   async function salvaIndirizzi(ev) {
