@@ -534,6 +534,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
   const $ = (s) => document.querySelector(s);
   const CGI = 'api.cgi';                 // lo script accanto a questa pagina
   const CHIAVE = 'citofono-pin';
+  const CHIAVE_USER = 'citofono-utente';   // solo l'ultimo nome utente, per precompilare il login
   // colonne di users.xml, una riga per persona (verificate sulla placca)
   const COL = ['nome', 'gruppo', 'stanza', 'tipo', 'stato', 'rele', 'tessere', 'pin_mode', 'pin',
     'pass_on', 'usi', 'valid_on', 'dal', 'al', 'dalle', 'alle', 'settimana'];
@@ -592,6 +593,13 @@ details.scheda[open] > summary { margin-bottom: 14px; }
   }
   function dimenticaCredenziali() {
     for (const nome of ['sessionStorage', 'localStorage']) { try { archivio(nome).removeItem(CHIAVE); } catch (e) { /* idem */ } }
+  }
+  // ricorda SOLO l'ultimo nome utente (non la password) per precompilare il campo
+  function salvaUltimoUtente(u) {
+    try { const a = archivio('localStorage'); if (u) a.setItem(CHIAVE_USER, u); } catch (e) { /* non salvabile */ }
+  }
+  function leggiUltimoUtente() {
+    try { return archivio('localStorage').getItem(CHIAVE_USER) || ''; } catch (e) { return ''; }
   }
 
   // ---------- rete: tutto passa da api.cgi ----------
@@ -1660,6 +1668,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     try { await occupato(async () => { await accedi(); await chiStato(); if (!S.bootstrap) await caricaTutto(); }); }
     catch (e) { S.pass = ''; $('#eAccesso').textContent = e.message; return; }
     salvaCredenziali(f.ricorda.checked);
+    salvaUltimoUtente(S.user);
     f.pass.value = '';
     mostra('app');
     if (S.bootstrap) { mostraPagina('pAdmin'); avviso('Imposta la password della placca e crea gli utenti nella scheda Admin', 'ok'); }
@@ -1671,7 +1680,11 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     $('#sMaster').hidden = true;
     $('#lPersone').textContent = '';
     $('#lFissi').textContent = '';
+    const ultimo = leggiUltimoUtente();                 // tieni il nome utente precompilato
+    if (ultimo) { $('#fAccesso').user.value = ultimo; }
+    $('#fAccesso').pass.value = '';
     mostra('accesso');
+    $('#fAccesso').pass.focus();
   }
 
   // ---------- avvio ----------
@@ -1757,6 +1770,8 @@ details.scheda[open] > summary { margin-bottom: 14px; }
         mostra('app'); if (S.bootstrap) mostraPagina('pAdmin'); return;
       } catch (e) { S.pass = ''; $('#eAccesso').textContent = e.message; }
     }
+    const ultimo = leggiUltimoUtente();                 // precompila l'ultimo utente (senza password)
+    if (ultimo) { $('#fAccesso').user.value = ultimo; $('#fAccesso').pass.focus(); }
     mostra('accesso');
   }
   avvio();
