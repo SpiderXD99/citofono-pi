@@ -90,9 +90,24 @@ MANIFEST = json.dumps({
     'icons': [{'src': '/icona-192.png', 'sizes': '192x192', 'type': 'image/png', 'purpose': 'any'},
               {'src': '/icona-512.png', 'sizes': '512x512', 'type': 'image/png', 'purpose': 'maskable'}],
 }).encode('utf-8')
-SW = (b"self.addEventListener('install',function(e){self.skipWaiting();});\n"
-      b"self.addEventListener('activate',function(e){e.waitUntil(self.clients.claim());});\n"
-      b"self.addEventListener('fetch',function(e){});\n")
+# service worker "prima la rete": serve sempre la versione aggiornata; la cache
+# fa solo da fallback offline. All'attivazione svuota le cache delle versioni vecchie.
+SW = (b"var CACHE='citofono-v1';\n"
+      b"self.addEventListener('install',function(e){self.skipWaiting();});\n"
+      b"self.addEventListener('activate',function(e){e.waitUntil(Promise.all([\n"
+      b"  self.clients.claim(),\n"
+      b"  caches.keys().then(function(k){return Promise.all(k.filter(function(n){return n!==CACHE;})\n"
+      b"    .map(function(n){return caches.delete(n);}));})\n"
+      b"]));});\n"
+      b"self.addEventListener('fetch',function(e){\n"
+      b"  var r=e.request; if(r.method!=='GET'){return;}\n"
+      b"  var u=new URL(r.url); if(u.origin!==self.location.origin){return;}\n"
+      b"  if(/^\\/(api\\.cgi|aggiorna|update)/.test(u.pathname)){return;}\n"
+      b"  e.respondWith(fetch(r).then(function(res){\n"
+      b"    var c=res.clone(); caches.open(CACHE).then(function(ch){ch.put(r,c);}).catch(function(){});\n"
+      b"    return res;\n"
+      b"  }).catch(function(){return caches.match(r);}));\n"
+      b"});\n")
 
 
 class Errore(Exception):
