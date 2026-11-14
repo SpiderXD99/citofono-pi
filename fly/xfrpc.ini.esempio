@@ -1,0 +1,32 @@
+# xfrpc.ini - va SUL MONITOR in /dnake/data/xfrpc/xfrpc.ini (permessi 600).
+# Collega il monitor all'app su Fly. Sostituisci i valori in MAIUSCOLO.
+# NON committare la copia con il token vero.
+#
+# Provato con lo xfrpc di fabbrica del monitor (protocollo frp 0.58, libevent in
+# modalita' poll perche' il kernel non ha epoll) contro frps 0.58.1:
+#   - la chiave del token si chiama "token" (con "auth_token" il login fallisce)
+#   - la connessione e' TLS da sola: niente "use_encryption" (con quello i dati
+#     non passano, anche se il login riesce)
+
+[common]
+# l'app su Fly (ha un IPv4 dedicato: fly ips list)
+server_addr = NOME-APP.fly.dev
+server_port = 7000
+# lo stesso valore di "fly secrets set FRP_TOKEN=..."
+token = TOKEN_FRP
+heartbeat_interval = 30
+heartbeat_timeout = 90
+
+# la web API della placca (porta 80), vista su Fly come 127.0.0.1:17080
+[placca]
+type = tcp
+local_ip = IP_DELLA_PLACCA
+local_port = 80
+remote_port = 17080
+
+# il web del monitor (per cambiarne la password dalla pagina), su Fly 127.0.0.1:17443
+[monitor]
+type = tcp
+local_ip = 127.0.0.1
+local_port = 443
+remote_port = 17443

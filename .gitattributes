@@ -1,0 +1,3 @@
+# script eseguiti su Linux (Pi, container Fly): sempre fine riga Unix
+*.sh text eol=lf
+Dockerfile text eol=lf

@@ -341,7 +341,13 @@ details.scheda[open] > summary { margin-bottom: 14px; }
         </form>
       </details>
 
-      <details class="scheda">
+      <details class="scheda" id="sCollegamento" hidden open>
+        <summary>Collegamento al monitor <span id="cStato" class="stato spento">…</span></summary>
+        <p class="nota" id="cInfo"></p>
+        <button id="cVerifica" class="btn piccolo" type="button">Verifica di nuovo</button>
+      </details>
+
+      <details class="scheda" id="sRelay">
         <summary>Relay sul monitor <span id="pStato" class="stato spento">…</span></summary>
         <p class="nota" id="pInfo"></p>
         <button id="pVerifica" class="btn piccolo" type="button">Verifica / Avvia relay</button>
@@ -360,7 +366,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
         </form>
       </details>
 
-      <details class="scheda">
+      <details class="scheda" id="sRete">
         <summary>Rete e Wi-Fi <span id="rStato" class="stato spento">…</span></summary>
         <p class="nota" id="rInfo"></p>
         <details id="dHotspot">
@@ -424,7 +430,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
 
       <details class="scheda">
         <summary>Aggiornamento</summary>
-        <p class="nota">Scarica l'ultima versione e riavvia. Il Pi lo fa anche da solo ogni notte.</p>
+        <p class="nota" id="aggNota">Scarica l'ultima versione e riavvia. Il Pi lo fa anche da solo ogni notte.</p>
         <button id="bAggiornaPi" class="btn piccolo" type="button">Aggiorna adesso</button>
         <pre id="aggOutPi" hidden></pre>
       </details>
@@ -1405,7 +1411,10 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     if (s.libera) info.push('RAM libera sul monitor ' + mb(s.libera));
     $('#tStato').textContent = testo;
     $('#tStato').className = 'stato ' + classe;
+    const fly = s.dove === 'fly';
+    if (fly) info.push('su Fly resta sempre acceso; il token si cambia con «fly secrets set TUNNEL_TOKEN=…»');
     $('#tDettagli').textContent = info.join(' · ');
+    $('#tAvvia').hidden = $('#tFerma').hidden = $('#fToken').hidden = fly;
     $('#tAvvia').disabled = !(s.installato === '1' && s.token === '1' && s.attivo !== '1');
     $('#tFerma').disabled = s.attivo !== '1';
   }
@@ -1491,10 +1500,29 @@ details.scheda[open] > summary { margin-bottom: 14px; }
       $('#fIndirizzi').placca.value = s.placca || '';
       $('#fIndirizzi').monitor.value = s.monitor || '';
       $('#fIndirizzi').pubblico.value = s.pubblico || '';
-      disegnaRelay(s.ponte);
+      S.fly = s.piattaforma === 'fly';
+      $('#sCollegamento').hidden = !S.fly;
+      $('#sRelay').hidden = S.fly;
+      $('#sRete').hidden = S.fly;
+      $('#aggNota').textContent = S.fly
+        ? 'Scarica l’ultima versione dal repository e riavvia il server su Fly (tunnel e collegamento restano su).'
+        : 'Scarica l’ultima versione e riavvia. Il Pi lo fa anche da solo ogni notte.';
+      if (S.fly) disegnaCollegamento(s.collegamento); else disegnaRelay(s.ponte);
     } catch (e) { avviso(e.message, 'err'); }
-    caricaReteAdmin();
+    if (!S.fly) caricaReteAdmin();
     caricaUtentiAdmin();
+  }
+  function disegnaCollegamento(c) {
+    const st = $('#cStato'), info = $('#cInfo');
+    c = c || {};
+    st.textContent = c.placca ? 'collegato' : 'non collegato';
+    st.className = 'stato ' + (c.placca ? 'acceso' : 'spento');
+    const n = [];
+    if (!c.frps) n.push('⚠ frps non è in esecuzione su Fly');
+    n.push(c.placca ? 'la placca risponde attraverso il monitor'
+      : 'xfrpc sul monitor non è collegato: monitor spento, senza rete o xfrpc fermo');
+    if (c.placca) n.push(c.monitor ? 'web del monitor raggiungibile' : 'web del monitor non esposto');
+    info.textContent = n.join(' · ');
   }
   function disegnaRelay(p) {
     const st = $('#pStato'), info = $('#pInfo'), f = $('#fPonte');
@@ -1739,6 +1767,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     $('#fPlaccaCred').addEventListener('submit', salvaPlaccaPass);
     $('#fUtente').addEventListener('submit', aggiungiUtente);
     $('#bAggiornaPi').addEventListener('click', aggiornaPi);
+    $('#cVerifica').addEventListener('click', caricaAdmin);
     $('#bLog').addEventListener('click', () => prova(caricaLog));
     $('#bLogOn').addEventListener('click', attivaLog);
     $('#fFisso').addEventListener('submit', salvaFisso);

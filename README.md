@@ -7,6 +7,9 @@ pagina e il tunnel, e parla con la placca tramite la sua **web API sulla porta 8
 (autenticandosi con la normale password admin della placca). Non modifica il
 firmware e non usa accessi di servizio dei dispositivi.
 
+> **Senza Raspberry:** la stessa app può girare su **Fly.io**, con il monitor che si
+> collega da solo tramite `xfrpc` (già nel suo firmware). Guida: [FLY.md](FLY.md).
+
 ## Come è fatto
 
 - **`server.py`** — piccolo server (solo libreria standard di Python 3). Serve due

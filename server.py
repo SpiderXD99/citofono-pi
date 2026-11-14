@@ -52,6 +52,9 @@ PREDEFINITI = {
     'UTENTI': '/etc/citofono/utenti.json',
     'PLACCA_CRED': '/etc/citofono/placca.json',
     'PROPRIETA': '/etc/citofono/proprieta.json',
+    # 'pi' = Raspberry in casa (relay, Wi-Fi, tunnel con systemd); 'fly' = app su Fly.io:
+    # la placca arriva da xfrpc sul monitor attraverso frps (PLACCA=127.0.0.1:17080)
+    'PIATTAFORMA': 'pi',
 }
 UTENTE = 'admin'                           # unico utente della placca ammesso dal proxy
 VALORE = re.compile(r'^[A-Za-z0-9%._~*()!+-]*$')  # valori form (gia' url-encoded; '+' = spazio)
@@ -531,7 +534,53 @@ def meminfo(chiave):
         return ''
 
 
+def su_fly():
+    return CONF['PIATTAFORMA'] == 'fly'
+
+
+def pid_di(nome):
+    """PID del primo processo che si chiama `nome` (lettura di /proc, senza systemd)."""
+    try:
+        for d in os.listdir('/proc'):
+            if d.isdigit():
+                try:
+                    with open('/proc/%s/comm' % d) as f:
+                        if f.read().strip() == nome:
+                            return d
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    return ''
+
+
+def rss_kb(pid):
+    try:
+        with open('/proc/%s/status' % pid) as f:
+            return next(r.split()[1] for r in f if r.startswith('VmRSS'))
+    except (OSError, StopIteration, IndexError):
+        return ''
+
+
+def porta_viva(indirizzo, timeout=2):
+    """True se host:porta accetta connessioni. Su Fly frps apre 17080 solo mentre
+    xfrpc del monitor e' collegato: e' l'indicatore di 'monitor collegato'."""
+    import socket
+    host, _, porta = indirizzo.rpartition(':')
+    try:
+        with socket.create_connection((host, int(porta)), timeout=timeout):
+            return True
+    except (OSError, ValueError):
+        return False
+
+
 def stato_tunnel():
+    if su_fly():                       # su Fly cloudflared lo avvia avvio.sh e resta sempre acceso
+        pid = pid_di('cloudflared')
+        return {'dove': 'fly', 'installato': int(os.access(CONF['CLOUDFLARED'], os.X_OK)),
+                'token': int(bool(os.environ.get('TUNNEL_TOKEN'))), 'attivo': int(bool(pid)),
+                'automatico': 1, 'ram': rss_kb(pid) if pid else '', 'libera': meminfo('MemAvailable'),
+                'versione': versione_cloudflared()}
     s = CONF['SERVIZIO']
     installato = os.access(CONF['CLOUDFLARED'], os.X_OK)
     attivo = systemctl('is-active', s)[1] == 'active'
@@ -553,6 +602,9 @@ def comanda_tunnel(azione, token):
     s = CONF['SERVIZIO']
     if azione == 'stato':
         pass
+    elif su_fly():
+        raise Errore(400, 'su Fly il tunnel resta sempre acceso; il token si cambia con '
+                          '"fly secrets set TUNNEL_TOKEN=..."')
     elif azione in ('avvia', 'ferma'):
         rc, _ = systemctl('enable' if azione == 'avvia' else 'disable', '--now', s)
         if rc:
@@ -642,6 +694,11 @@ def aggiorna_dal_repo():
     out = (r.stdout + r.stderr).strip()
     if r.returncode != 0:
         raise Errore(500, 'git pull non riuscito:\n' + out)
+    if su_fly():
+        # niente systemd: esco tra un secondo (dopo la risposta) e il ciclo di avvio.sh
+        # rilancia server.py con il codice nuovo; frps e cloudflared restano su
+        threading.Timer(1.0, os._exit, (0,)).start()
+        return out
     # riavvio differito: rispondo prima, poi systemd riavvia il server
     try:
         subprocess.Popen(['sh', '-c', 'sleep 1; systemctl restart citofono.service'],
@@ -751,9 +808,21 @@ def gestisci(corpo, dal_tunnel, cookie, cookie_pin, ip):
     if op == 'admin_logout':
         SESSIONI.pop(cookie, None)
         return js, b'{"ok":1}', {'Set-Cookie': 'AdminSID=; Max-Age=0; Path=/'}
+    if su_fly() and op in ('admin_relay_save', 'admin_relay', 'admin_rete_state', 'admin_wifi_scan',
+                           'admin_wifi_connect', 'admin_hotspot_save'):
+        raise Errore(400, 'non disponibile su Fly: relay e Wi-Fi esistono solo sul Raspberry')
     if op == 'admin_state':
         dati = {'placca': CONF['PLACCA'], 'monitor': CONF['MONITOR'], 'pubblico': CONF['PUBBLICO'],
-                'lan_only': CONF['ADMIN_LAN_ONLY'], 'tunnel': stato_tunnel()}
+                'lan_only': CONF['ADMIN_LAN_ONLY'], 'tunnel': stato_tunnel(),
+                'piattaforma': CONF['PIATTAFORMA']}
+        if su_fly():
+            # il monitor e' "collegato" se frps espone la porta della placca (xfrpc connesso)
+            dati['collegamento'] = {'placca': porta_viva(CONF['PLACCA']) if CONF['PLACCA'] else False,
+                                    'monitor': porta_viva(urllib.parse.urlsplit(CONF['MONITOR']).netloc)
+                                    if CONF['MONITOR'] else False,
+                                    'frps': bool(pid_di('frps'))}
+            dati['ponte'] = None
+            return js, json.dumps(dati).encode('utf-8'), None
         try:
             import ponte
             pc = ponte.leggi_conf(CONF['PONTE_CONF'])
