@@ -1,0 +1,19 @@
+# /dnake/data/tgbot/config  -  configurazione del bot (sul monitor, permessi 600)
+# Righe chiave=valore. Il file viene LETTO, non eseguito. NON committare la copia vera.
+
+# token del bot, da @BotFather su Telegram (es. 123456789:AAH...)
+TOKEN=
+
+# ID Telegram autorizzati a usare il bot, separati da virgola.
+# Il tuo ID te lo dice il bot stesso: scrivigli /id.
+GESTORI=
+
+# md5 della password del web della placca (non la password in chiaro). Per calcolarla
+# sul monitor:  printf '%s' 'LA_PASSWORD' | md5sum
+PLACCA_MD5=
+
+# IP della placca: vuoto = quello della placca abbinata, letto da /dnake/data/sys.xml
+PLACCA=
+
+# rele' che i codici aprono: 0 = rele' 1, 1 = rele' 2, 0;1 = entrambi
+RELE=0
