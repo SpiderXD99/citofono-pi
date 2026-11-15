@@ -1478,6 +1478,16 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     if (!window.isSecureContext) return 'Le notifiche funzionano solo aprendo il sito dall’indirizzo pubblico (https).';
     return '';
   }
+  // «Registration failed - push service error»: il browser non raggiunge il SUO servizio push
+  async function spiegaErrorePush(e) {
+    const m = String((e && e.message) || e);
+    if (!(e && e.name === 'AbortError') && !/push service/i.test(m)) return m;
+    let brave = false;
+    try { brave = !!(navigator.brave && await navigator.brave.isBrave()); } catch (x) { /* non Brave */ }
+    if (brave) return 'Brave ha le notifiche push spente: apri brave://settings/privacy, attiva «Utilizza i servizi Google per i messaggi push», riavvia Brave e riprova.';
+    return 'Il browser non riesce a contattare il suo servizio di notifiche. Non usare la finestra in incognito; prova con Chrome, Edge o Firefox; '
+      + 'se c’è un firewall, una VPN o un blocco pubblicità di rete, prova con un’altra rete (es. hotspot del telefono). Poi riprova.';
+  }
   async function registrazioneSW() {
     try { return await navigator.serviceWorker.register('/sw.js'); }
     catch (e) { throw new Error('Il browser non accetta questo indirizzo per le notifiche: apri il sito dall’indirizzo pubblico (https), non da quello di casa.'); }
@@ -1517,7 +1527,10 @@ details.scheda[open] > summary { margin-bottom: 14px; }
         if (sub && sub.options && sub.options.applicationServerKey && aB64u(sub.options.applicationServerKey) !== chiave) {
           await sub.unsubscribe(); sub = null;          // iscrizione fatta con un'altra chiave del Pi
         }
-        if (!sub) sub = await NOTIFICHE.reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: daB64u(chiave) });
+        if (!sub) {
+          try { sub = await NOTIFICHE.reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: daB64u(chiave) }); }
+          catch (e) { throw new Error(await spiegaErrorePush(e)); }
+        }
         const j = sub.toJSON();
         await conSessione({ op: 'push_iscrivi', endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, modo: $('#nModo').value });
         await caricaNotifiche();
