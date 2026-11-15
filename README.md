@@ -82,6 +82,21 @@ master** della placca. Il numero si legge in due modi:
   anche sulla placca, per capire come convertire l'UID nel numero della placca; poi basta il
   telefono. Se la placca usa tessere Mifare criptate l'NFC del telefono non è utilizzabile.
 
+## Notifiche degli accessi
+
+Nella scheda **Accessi** › «Notifiche su questo dispositivo» ogni telefono può attivare un
+avviso quando qualcuno entra (o solo quando un accesso viene negato), anche col sito chiuso.
+Il Pi legge il registro della placca ogni 20 secondi e manda una notifica Web Push cifrata
+tramite il servizio del browser (Google, Apple, Mozilla, Microsoft). Le notifiche non
+contengono PIN né numeri di tessera; l'utente semplice riceve solo le proprie entrate.
+- Serve l'indirizzo pubblico **https** (tunnel): con l'indirizzo di casa e il certificato
+  autofirmato il browser non le permette.
+- **iPhone** (iOS 16.4+): prima «Aggiungi alla schermata Home», poi attivarle dall'app.
+- Il Pi deve avere la password della placca (Admin › Utenti della pagina) e il registro della
+  placca acceso (scheda Accessi).
+- Serve `python3-cryptography` (lo installa `installa.sh`; su un Pi già installato:
+  `sudo apt install python3-cryptography` e riavvio del servizio `citofono`).
+
 ## Aggiornamenti
 
 Il Pi resta aggiornato da questo repo, senza doverci accedere:

@@ -303,6 +303,22 @@ details.scheda[open] > summary { margin-bottom: 14px; }
         </div>
         <ul id="lLog" class="elenco"></ul>
       </section>
+
+      <details class="scheda" id="sNotifiche">
+        <summary>Notifiche su questo dispositivo <span id="nStato" class="stato spento">…</span></summary>
+        <p class="nota" id="nInfo">Ricevi un avviso sul telefono quando qualcuno entra, anche col sito chiuso.</p>
+        <label>Avvisami di
+          <select id="nModo">
+            <option value="tutte">tutti gli accessi</option>
+            <option value="negati">solo gli accessi negati</option>
+          </select></label>
+        <p class="errore" id="eNotifiche" role="alert"></p>
+        <div class="azioni">
+          <button id="nAttiva" class="btn piccolo primario" type="button">Attiva le notifiche</button>
+          <button id="nProva" class="btn piccolo" type="button" hidden>Prova</button>
+          <button id="nDisattiva" class="btn piccolo pericolo" type="button" hidden>Disattiva</button>
+        </div>
+      </details>
     </div>
 
     <div id="pImpostazioni" class="solo-admin" hidden>
@@ -1370,7 +1386,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     document.querySelectorAll('.scheda-btn').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.pagina === id)));
     if (id === 'pImpostazioni') { prova(() => tunnel('stato')); prova(caricaOrologio); statoPassMonitor(); }
     if (id === 'pAdmin') caricaAdmin();
-    if (id === 'pLog') prova(caricaLog);
+    if (id === 'pLog') { prova(caricaLog); caricaNotifiche().catch((e) => { $('#eNotifiche').textContent = e.message; }); }
   }
   // ---------- registro entrate (Log) ----------
   // la placca salva ogni apertura in /data/unlock.xml: il server lo legge e lo rimanda come elenco
@@ -1419,6 +1435,104 @@ details.scheda[open] > summary { margin-bottom: 14px; }
   }
   async function attivaLog() {
     await prova(async () => { await conSessione({ op: 'api', api: 'unlock_logs', enable: '1' }); await caricaLog(); }, 'Registro attivato');
+  }
+
+  // ---------- notifiche degli accessi (Web Push) ----------
+  // il Pi controlla il registro e manda le notifiche; qui il telefono si iscrive o si cancella
+  const NOTIFICHE = { reg: null, sub: null, info: null };
+  function daB64u(t) {
+    const b = atob(t.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - t.length % 4) % 4));
+    return Uint8Array.from(b, (c) => c.charCodeAt(0));
+  }
+  function aB64u(buf) {
+    return btoa(String.fromCharCode.apply(null, new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  function iPhone() { return /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); }
+  function appInstallata() { return matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; }
+  function disegnaNotifiche(stato, testo, attive) {
+    const st = $('#nStato');
+    st.textContent = stato; st.className = 'stato ' + (attive ? 'acceso' : 'spento');
+    $('#nInfo').textContent = testo;
+    $('#nAttiva').hidden = !!attive;
+    $('#nProva').hidden = !attive; $('#nDisattiva').hidden = !attive;
+  }
+  // perche' su questo dispositivo non si puo' (o '' se si puo')
+  function ostacoloNotifiche() {
+    if (iPhone() && !appInstallata()) return 'Su iPhone le notifiche arrivano solo dall’app: tocca Condividi › «Aggiungi alla schermata Home», apri Citofono da lì e torna qui.';
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return 'Questo browser non supporta le notifiche.';
+    if (!window.isSecureContext) return 'Le notifiche funzionano solo aprendo il sito dall’indirizzo pubblico (https).';
+    return '';
+  }
+  async function registrazioneSW() {
+    try { return await navigator.serviceWorker.register('/sw.js'); }
+    catch (e) { throw new Error('Il browser non accetta questo indirizzo per le notifiche: apri il sito dall’indirizzo pubblico (https), non da quello di casa.'); }
+  }
+  async function caricaNotifiche() {
+    $('#eNotifiche').textContent = '';
+    const no = ostacoloNotifiche();
+    if (no) { disegnaNotifiche('non disponibili', no, false); $('#nAttiva').hidden = true; return; }
+    let reg;
+    try { reg = await registrazioneSW(); } catch (e) { disegnaNotifiche('non disponibili', e.message, false); $('#nAttiva').hidden = true; return; }
+    NOTIFICHE.reg = reg;
+    NOTIFICHE.sub = await reg.pushManager.getSubscription();
+    const info = json(await conSessione({ op: 'push_info', endpoint: NOTIFICHE.sub ? NOTIFICHE.sub.endpoint : '' }));
+    NOTIFICHE.info = info;
+    if (!info.disponibile) { disegnaNotifiche('non disponibili', 'Sul Raspberry manca un componente: sudo apt install python3-cryptography, poi riavvia il servizio citofono.', false); $('#nAttiva').hidden = true; return; }
+    $('#nModo').value = info.modo || 'tutte';
+    const attive = !!(NOTIFICHE.sub && info.iscritto && Notification.permission === 'granted');
+    let testo = attive ? 'Riceverai un avviso quando qualcuno entra' + (info.modo === 'negati' ? ' senza riuscirci.' : '.') + ' Nelle notifiche non compaiono PIN o numeri di tessera.'
+      : (Notification.permission === 'denied' ? 'Le notifiche sono bloccate per questo sito: riattivale dalle impostazioni del browser.' : 'Ricevi un avviso sul telefono quando qualcuno entra, anche col sito chiuso.');
+    if (!info.placca_pass) testo += ' ⚠ Il Raspberry non ha la password della placca (Admin › Utenti della pagina): finché manca non può leggere gli accessi.';
+    else if (attive && info.errore) testo += ' ⚠ ' + info.errore + '.';
+    disegnaNotifiche(attive ? 'attive' : 'spente', testo, attive);
+    if (Notification.permission === 'denied' && !attive) $('#nAttiva').hidden = true;
+  }
+  async function attivaNotifiche() {
+    const err = $('#eNotifiche'); err.textContent = '';
+    const b = $('#nAttiva');
+    if (b.disabled) return;
+    b.disabled = true; b.textContent = 'Attivazione… (può volerci mezzo minuto)';
+    await prova(async () => {
+      try {
+        if (!NOTIFICHE.reg || !NOTIFICHE.info) await caricaNotifiche();
+        if (!NOTIFICHE.reg || !NOTIFICHE.info || !NOTIFICHE.info.disponibile) throw new Error('Notifiche non disponibili su questo dispositivo');
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') throw new Error('Permesso negato: senza il permesso del browser le notifiche non possono arrivare');
+        let sub = await NOTIFICHE.reg.pushManager.getSubscription();
+        const chiave = NOTIFICHE.info.chiave;
+        if (sub && sub.options && sub.options.applicationServerKey && aB64u(sub.options.applicationServerKey) !== chiave) {
+          await sub.unsubscribe(); sub = null;          // iscrizione fatta con un'altra chiave del Pi
+        }
+        if (!sub) sub = await NOTIFICHE.reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: daB64u(chiave) });
+        const j = sub.toJSON();
+        await conSessione({ op: 'push_iscrivi', endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, modo: $('#nModo').value });
+        await caricaNotifiche();
+      } catch (e) { err.textContent = e.message || String(e); throw e; }
+      finally { b.disabled = false; b.textContent = 'Attiva le notifiche'; }
+    }, 'Notifiche attivate');
+  }
+  async function disattivaNotifiche() {
+    await prova(async () => {
+      const sub = NOTIFICHE.reg && await NOTIFICHE.reg.pushManager.getSubscription();
+      if (sub) { await conSessione({ op: 'push_cancella', endpoint: sub.endpoint }); await sub.unsubscribe(); }
+      await caricaNotifiche();
+    }, 'Notifiche disattivate');
+  }
+  async function provaNotifiche() {
+    await prova(async () => {
+      const sub = NOTIFICHE.reg && await NOTIFICHE.reg.pushManager.getSubscription();
+      if (!sub) throw new Error('Attiva prima le notifiche');
+      await conSessione({ op: 'push_prova', endpoint: sub.endpoint });
+    }, 'Notifica di prova inviata: dovrebbe arrivare tra pochi secondi');
+  }
+  async function cambiaModoNotifiche() {
+    const sub = NOTIFICHE.reg && await NOTIFICHE.reg.pushManager.getSubscription();
+    if (!sub || !NOTIFICHE.info || !NOTIFICHE.info.iscritto) return;
+    const j = sub.toJSON();
+    await prova(async () => {
+      await conSessione({ op: 'push_iscrivi', endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, modo: $('#nModo').value });
+      await caricaNotifiche();
+    }, 'Preferenza salvata');
   }
 
   // ---------- orologio di monitor e placca ----------
@@ -1858,6 +1972,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     salvaUltimoUtente(S.user);
     f.pass.value = '';
     mostra('app');
+    if (location.hash === '#accessi' && !S.bootstrap) mostraPagina('pLog');
     if (S.bootstrap) { mostraPagina('pAdmin'); avviso('Imposta la password della placca e crea gli utenti nella scheda Admin', 'ok'); }
   }
   function esci() {
@@ -1936,6 +2051,10 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     $('#bLog').addEventListener('click', () => prova(caricaLog));
     $('#bLogOn').addEventListener('click', attivaLog);
     $('#oAggiorna').addEventListener('click', () => prova(caricaOrologio));
+    $('#nAttiva').addEventListener('click', attivaNotifiche);
+    $('#nDisattiva').addEventListener('click', disattivaNotifiche);
+    $('#nProva').addEventListener('click', provaNotifiche);
+    $('#nModo').addEventListener('change', cambiaModoNotifiche);
     $('#fMonitorPass').addEventListener('submit', salvaPassMonitor);
     $('#bOra').addEventListener('click', () => { if (S.ruolo !== 'user') mostraPagina('pImpostazioni'); });
     $('#fFisso').addEventListener('submit', salvaFisso);
@@ -1967,7 +2086,8 @@ details.scheda[open] > summary { margin-bottom: 14px; }
       try {
         await occupato(async () => { await accedi(); await chiStato(); if (!S.bootstrap) await caricaTutto(); });
         if (!S.bootstrap) caricaOrologio().catch(() => {});
-        mostra('app'); if (S.bootstrap) mostraPagina('pAdmin'); return;
+        mostra('app'); if (S.bootstrap) mostraPagina('pAdmin'); else if (location.hash === '#accessi') mostraPagina('pLog');
+        return;
       } catch (e) { S.pass = ''; $('#eAccesso').textContent = e.message; }
     }
     const ultimo = leggiUltimoUtente();                 // precompila l'ultimo utente (senza password)

@@ -10,6 +10,9 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends git openssl ca-certificates curl \
  && rm -rf /var/lib/apt/lists/*
 
+# notifiche push degli accessi (cifratura Web Push)
+RUN pip install --no-cache-dir cryptography
+
 # frps: stessa serie (0.58) del protocollo di xfrpc sul monitor; verificato col
 # file di checksum ufficiale della release
 RUN set -eux; cd /tmp; \

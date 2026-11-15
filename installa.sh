@@ -11,7 +11,7 @@ ETC=/etc/citofono
 
 echo "== pacchetti =="
 apt-get update
-apt-get install -y python3 git openssl curl ca-certificates
+apt-get install -y python3 python3-cryptography git openssl curl ca-certificates
 
 echo "== cloudflared =="
 if [ ! -x /usr/bin/cloudflared ]; then

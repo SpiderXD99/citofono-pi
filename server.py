@@ -14,6 +14,7 @@ I SEGRETI STANNO SOLO SUL PI, in /etc/citofono/ (file 600), MAI nel repository:
 Solo libreria standard di Python 3. Avvio: server.py --conf /etc/citofono/citofono.conf
 """
 
+import base64
 import hashlib
 import hmac
 import html
@@ -31,6 +32,15 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+
+try:                                       # solo per le notifiche push (python3-cryptography)
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    CRITTO = True
+except ImportError:
+    CRITTO = False
 
 PREDEFINITI = {
     'PLACCA': '',                          # IP della placca, es. 192.168.68.90
@@ -53,6 +63,9 @@ PREDEFINITI = {
     'UTENTI': '/etc/citofono/utenti.json',
     'PLACCA_CRED': '/etc/citofono/placca.json',
     'MONITOR_CRED': '/etc/citofono/monitor.json',   # md5 della password web del monitor (orologio)
+    'PUSH': '/etc/citofono/push.json',              # dispositivi iscritti alle notifiche
+    'PUSH_STATO': '/etc/citofono/push_stato.json',  # entrate gia' notificate
+    'VAPID': '/etc/citofono/vapid.pem',             # chiave privata per firmare le notifiche
     'PROPRIETA': '/etc/citofono/proprieta.json',
     # 'pi' = Raspberry in casa (relay, Wi-Fi, tunnel con systemd); 'fly' = app su Fly.io:
     # la placca arriva da xfrpc sul monitor attraverso frps (PLACCA=127.0.0.1:17080)
@@ -72,7 +85,7 @@ CAMPI_SEMPLICI = {'op', 'sid', 'api', 'user', 'hash', 'azione', 'token',
                   'mon_host', 'mon_port', 'mon_user', 'mon_pass', 'placca_ip', 'relay_port',
                   'ssid', 'wifi_pass', 'hs_ssid', 'hs_pass',
                   'pass', 'nuova', 'pin_user', 'pin_pass', 'placca_pass', 'ruolo',
-                  'dove', 'ora', 'ntp', 'monitor_pass'}
+                  'dove', 'ora', 'ntp', 'monitor_pass', 'endpoint', 'p256dh', 'auth', 'modo'}
 BLOCCATA ='la placca ha bloccato gli accessi per qualche minuto dopo una password sbagliata: riprova tra 2-3 minuti'
 ITER = 210000                              # iterazioni PBKDF2 per la password admin
 SESSIONI = {}                              # token admin -> scadenza (epoch)
@@ -98,7 +111,7 @@ MANIFEST = json.dumps({
 }).encode('utf-8')
 # service worker "prima la rete": serve sempre la versione aggiornata; la cache
 # fa solo da fallback offline. All'attivazione svuota le cache delle versioni vecchie.
-SW = (b"var CACHE='citofono-v1';\n"
+SW = (b"var CACHE='citofono-v2';\n"
       b"self.addEventListener('install',function(e){self.skipWaiting();});\n"
       b"self.addEventListener('activate',function(e){e.waitUntil(Promise.all([\n"
       b"  self.clients.claim(),\n"
@@ -113,6 +126,19 @@ SW = (b"var CACHE='citofono-v1';\n"
       b"    var c=res.clone(); caches.open(CACHE).then(function(ch){ch.put(r,c);}).catch(function(){});\n"
       b"    return res;\n"
       b"  }).catch(function(){return caches.match(r);}));\n"
+      b"});\n"
+      # notifiche degli accessi: il Pi le manda cifrate, qui si mostrano; il tocco apre la pagina
+      b"self.addEventListener('push',function(e){\n"
+      b"  var d={}; try{d=e.data?e.data.json():{};}catch(x){d={body:e.data?e.data.text():''};}\n"
+      b"  e.waitUntil(self.registration.showNotification(d.title||'Citofono',{body:d.body||'',\n"
+      b"    tag:d.tag||undefined,icon:'/icona-192.png',badge:'/icona-192.png',data:{url:d.url||'/#accessi'}}));\n"
+      b"});\n"
+      b"self.addEventListener('notificationclick',function(e){\n"
+      b"  e.notification.close(); var url=(e.notification.data&&e.notification.data.url)||'/#accessi';\n"
+      b"  e.waitUntil(self.clients.matchAll({type:'window',includeUncontrolled:true}).then(function(l){\n"
+      b"    for(var i=0;i<l.length;i++){if('focus' in l[i]){l[i].navigate(url).catch(function(){});return l[i].focus();}}\n"
+      b"    return self.clients.openWindow(url);\n"
+      b"  }));\n"
       b"});\n")
 
 
@@ -607,6 +633,266 @@ def imposta_ora(dove, sid, ora, ntp):
     if esito < 0:
         raise Errore(502, "il %s ha rifiutato l'ora" % dove)
     return ora_dispositivo(dove, sid)
+
+
+# ---------- notifiche push degli accessi (Web Push, RFC 8291 + VAPID RFC 8292) ----------
+# Il Pi legge il registro della placca ogni POLL_PUSH secondi e, per ogni entrata nuova,
+# manda una notifica cifrata ai dispositivi iscritti. Nessun servizio esterno a parte il
+# servizio push del browser (Google, Mozilla, Apple, Microsoft): solo verso di loro si
+# inviano richieste, mai verso indirizzi scelti dal client.
+POLL_PUSH = 20
+MAX_PER_GIRO = 5                           # oltre: una notifica riassuntiva
+SERVIZI_PUSH = ('fcm.googleapis.com', 'updates.push.services.mozilla.com', 'push.services.mozilla.com',
+                'web.push.apple.com', 'notify.windows.com')
+_PUSH_LOCK = threading.Lock()
+_SORVEGLIA = {'sid': '', 'pausa': 0.0, 'nuovo_inizio': True, 'errore': ''}
+
+
+def b64u(b):
+    return base64.urlsafe_b64encode(b).rstrip(b'=').decode('ascii')
+
+
+def ub64u(t):
+    t = str(t)
+    return base64.urlsafe_b64decode(t + '=' * (-len(t) % 4))
+
+
+def _hkdf(sale, ikm, info, n):
+    prk = hmac.new(sale, ikm, hashlib.sha256).digest()
+    return hmac.new(prk, info + b'\x01', hashlib.sha256).digest()[:n]
+
+
+def chiave_vapid():
+    try:
+        with open(CONF['VAPID'], 'rb') as f:
+            return serialization.load_pem_private_key(f.read(), None)
+    except (OSError, ValueError):
+        k = ec.generate_private_key(ec.SECP256R1())
+        pem = k.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                              serialization.NoEncryption())
+        fd = os.open(CONF['VAPID'], os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, 'wb') as f:
+            f.write(pem)
+        return k
+
+
+def _punto(chiave_pubblica):
+    return chiave_pubblica.public_bytes(serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint)
+
+
+def vapid_pubblica():
+    return b64u(_punto(chiave_vapid().public_key()))
+
+
+def cifra_push(p256dh, auth, testo, sale=None, locale=None):
+    """Cifratura aes128gcm di RFC 8291 (un solo record)."""
+    ua_pub = ub64u(p256dh)
+    segreto = ub64u(auth)
+    as_priv = locale or ec.generate_private_key(ec.SECP256R1())
+    as_pub = _punto(as_priv.public_key())
+    ecdh = as_priv.exchange(ec.ECDH(), ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), ua_pub))
+    sale = sale or os.urandom(16)
+    ikm = _hkdf(segreto, ecdh, b'WebPush: info\x00' + ua_pub + as_pub, 32)
+    cek = _hkdf(sale, ikm, b'Content-Encoding: aes128gcm\x00', 16)
+    nonce = _hkdf(sale, ikm, b'Content-Encoding: nonce\x00', 12)
+    cifrato = AESGCM(cek).encrypt(nonce, testo + b'\x02', None)
+    return sale + (4096).to_bytes(4, 'big') + bytes([len(as_pub)]) + as_pub + cifrato
+
+
+def _jwt_vapid(aud):
+    sub = ('https://' + CONF['PUBBLICO']) if re.fullmatch(r'[A-Za-z0-9.-]+', CONF['PUBBLICO'] or '') \
+        else 'mailto:citofono@example.invalid'
+    testa = b64u(json.dumps({'typ': 'JWT', 'alg': 'ES256'}, separators=(',', ':')).encode())
+    corpo = b64u(json.dumps({'aud': aud, 'exp': int(time.time()) + 12 * 3600, 'sub': sub},
+                            separators=(',', ':')).encode())
+    firmato = (testa + '.' + corpo).encode('ascii')
+    r, s_ = decode_dss_signature(chiave_vapid().sign(firmato, ec.ECDSA(hashes.SHA256())))
+    return testa + '.' + corpo + '.' + b64u(r.to_bytes(32, 'big') + s_.to_bytes(32, 'big'))
+
+
+def endpoint_valido(url):
+    u = urllib.parse.urlsplit(url)
+    host = (u.hostname or '').lower()
+    extra = [h for h in (CONF.get('PUSH_EXTRA') or '').split(',') if h]   # solo per le prove
+    if host in extra:
+        return True
+    return u.scheme == 'https' and any(host == h or host.endswith('.' + h) for h in SERVIZI_PUSH)
+
+
+def invia_push(iscr, dati, ttl=86400):
+    """Manda una notifica. Ritorna il codice HTTP (0 = rete); 404/410 = iscrizione scaduta."""
+    url = iscr['endpoint']
+    if not endpoint_valido(url):
+        return 400
+    u = urllib.parse.urlsplit(url)
+    corpo = cifra_push(iscr['p256dh'], iscr['auth'], json.dumps(dati).encode('utf-8'))
+    intest = {'TTL': str(ttl), 'Urgency': 'high', 'Content-Encoding': 'aes128gcm',
+              'Content-Type': 'application/octet-stream', 'Content-Length': str(len(corpo)),
+              'Authorization': 'vapid t=%s, k=%s' % (_jwt_vapid('%s://%s' % (u.scheme, u.netloc)), vapid_pubblica())}
+    conn = None
+    try:
+        if u.scheme == 'https':
+            conn = http.client.HTTPSConnection(u.hostname, u.port or 443, timeout=15)
+        else:
+            conn = http.client.HTTPConnection(u.hostname, u.port or 80, timeout=15)
+        conn.request('POST', u.path + (('?' + u.query) if u.query else ''), body=corpo, headers=intest)
+        r = conn.getresponse()
+        r.read()
+        return r.status
+    except (OSError, http.client.HTTPException):
+        return 0
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def _leggi_json(chiave, vuoto):
+    try:
+        with open(CONF[chiave], encoding='utf-8') as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return vuoto
+
+
+def _salva_json(chiave, dati):
+    fd = os.open(CONF[chiave], os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, 'w', encoding='utf-8') as f:
+        json.dump(dati, f)
+
+
+def iscrizioni():
+    v = _leggi_json('PUSH', [])
+    return v if isinstance(v, list) else []
+
+
+def iscrivi(utente, ruolo, endpoint, p256dh, auth, modo):
+    if not CRITTO:
+        raise Errore(500, 'sul Pi manca la libreria: sudo apt install python3-cryptography')
+    if not endpoint_valido(endpoint):
+        raise Errore(400, 'servizio di notifiche non riconosciuto')
+    try:
+        if len(ub64u(p256dh)) != 65 or len(ub64u(auth)) != 16:
+            raise ValueError
+    except ValueError:
+        raise Errore(400, 'chiavi della notifica non valide')
+    if modo not in ('tutte', 'negati'):
+        raise Errore(400, 'modo non valido')
+    with _PUSH_LOCK:
+        lista = [i for i in iscrizioni() if i.get('endpoint') != endpoint]
+        if not lista:                         # primo dispositivo: si riparte dal registro di adesso
+            _SORVEGLIA['nuovo_inizio'] = True
+        if len(lista) >= 30:
+            raise Errore(400, 'troppi dispositivi iscritti')
+        lista.append({'endpoint': endpoint, 'p256dh': p256dh, 'auth': auth, 'user': utente,
+                      'ruolo': ruolo, 'modo': modo, 'dal': int(time.time())})
+        _salva_json('PUSH', lista)
+
+
+def togli_iscrizione(endpoint, utente=None):
+    with _PUSH_LOCK:
+        lista = iscrizioni()
+        nuova = [i for i in lista if not (i.get('endpoint') == endpoint and (utente is None or i.get('user') == utente))]
+        if len(nuova) != len(lista):
+            _salva_json('PUSH', nuova)
+        return len(nuova) != len(lista)
+
+
+def _chiave_entrata(r):
+    return '|'.join(str(r.get(k, '')) for k in ('ts', 'name', 'number', 'status', 'unlock_type', 'relays'))
+
+
+METODI = {'0': 'Tessera', '1': 'PIN', '2': 'Citofono / app', '3': 'Pulsante di uscita'}
+
+
+def testo_notifica(r):
+    """Nessun PIN o numero di tessera nel testo: le notifiche si leggono a schermo bloccato."""
+    nome = r.get('name') if r.get('name') not in ('', 'None', None) else ''
+    numero = r.get('number') not in ('', 'None', None)
+    metodo = METODI.get(str(r.get('unlock_type')), 'Apertura')
+    try:
+        quando = time.strftime('%d/%m %H:%M', time.localtime(int(r.get('ts'))))
+    except (TypeError, ValueError):
+        quando = ''
+    if str(r.get('status')) == '-1':
+        titolo = '⛔ ' + (nome or (metodo + ' non valido' if numero else 'Accesso negato'))
+    else:
+        titolo = '🔓 ' + (nome or (metodo if not numero else 'Sconosciuto'))
+    corpo = ' · '.join(x for x in ((metodo if (nome or numero) else ''), quando) if x)
+    if str(r.get('status')) == '-1':
+        corpo = 'Accesso negato' + (' · ' + corpo if corpo else '')
+    return {'title': titolo, 'body': corpo, 'tag': 'accesso-' + str(r.get('ts', '')), 'url': '/#accessi'}
+
+
+def _destinatari(entrate, sid):
+    """Per ogni iscrizione, le entrate che le interessano (utente semplice: solo le sue)."""
+    ids_cache = {}
+    for i in iscrizioni():
+        scelte = entrate
+        if i.get('ruolo') == 'user':
+            u = i.get('user', '')
+            if u not in ids_cache:
+                ids_cache[u] = identificatori_utente(u, sid)
+            ids = ids_cache[u]
+            scelte = [r for r in scelte if {str(r.get('name', '')).lower(), str(r.get('number', '')).lower()} & ids]
+        if i.get('modo') == 'negati':
+            scelte = [r for r in scelte if str(r.get('status')) == '-1']
+        if scelte:
+            yield i, scelte
+
+
+def giro_sorveglianza():
+    """Un controllo del registro. Ritorna quante notifiche ha mandato."""
+    if not CRITTO or not iscrizioni() or not re.fullmatch(r'[0-9.:]+', CONF['PLACCA'] or ''):
+        return 0
+    if not leggi_placca_hash():
+        _SORVEGLIA['errore'] = 'password della placca non salvata nel pannello admin'
+        return 0
+    try:
+        if not _SORVEGLIA['sid']:
+            _SORVEGLIA['sid'] = sid_placca('')
+        reg = leggi_registro(_SORVEGLIA['sid'])
+    except Errore as e:
+        _SORVEGLIA['sid'] = ''
+        _SORVEGLIA['errore'] = str(e)
+        if e.stato in (401, 503):             # password cambiata o placca bloccata: non insistere
+            _SORVEGLIA['pausa'] = time.time() + 180
+        return 0
+    _SORVEGLIA['errore'] = '' if reg['enable'] else 'il registro degli accessi della placca e\' spento'
+    entrate = reg['list']
+    chiavi = [_chiave_entrata(r) for r in entrate]
+    stato = _leggi_json('PUSH_STATO', {})
+    visti = set(stato.get('visti', [])) if isinstance(stato, dict) else set()
+    nuove = [] if _SORVEGLIA['nuovo_inizio'] else [r for r, k in zip(entrate, chiavi) if k not in visti]
+    _SORVEGLIA['nuovo_inizio'] = False
+    _salva_json('PUSH_STATO', {'visti': chiavi})   # le entrate uscite dal registro non tornano
+    if not nuove:
+        return 0
+    nuove.sort(key=lambda r: int(r.get('ts') or 0) if str(r.get('ts', '')).isdigit() else 0)
+    mandate = 0
+    for iscr, scelte in list(_destinatari(nuove, _SORVEGLIA['sid'])):
+        messaggi = [testo_notifica(r) for r in scelte[-MAX_PER_GIRO:]]
+        if len(scelte) > MAX_PER_GIRO:
+            messaggi.insert(0, {'title': 'Citofono', 'body': 'e altri %d accessi' % (len(scelte) - MAX_PER_GIRO),
+                                'tag': 'accessi-altri', 'url': '/#accessi'})
+        for m in messaggi:
+            st = invia_push(iscr, m)
+            if st in (404, 410):              # il browser ha tolto l'iscrizione
+                togli_iscrizione(iscr['endpoint'])
+                break
+            if 200 <= st < 300:
+                mandate += 1
+    return mandate
+
+
+def sorveglia():
+    while True:
+        time.sleep(POLL_PUSH)
+        if time.time() < _SORVEGLIA['pausa']:
+            continue
+        try:
+            giro_sorveglianza()
+        except Exception as e:                # il thread non deve morire per un errore imprevisto
+            _SORVEGLIA['errore'] = 'errore interno: %r' % (e,)
 
 
 # ---------- tunnel (servizio systemd) ----------
@@ -1199,6 +1485,38 @@ def gestisci(corpo, dal_tunnel, cookie, cookie_pin, ip):
     # --- pagina PIN: proxy verso la placca (serve la sessione della placca) ---
     if not re.fullmatch(r'[0-9.:]+', CONF['PLACCA']):
         raise Errore(502, 'IP della placca non impostato: aprilo nel pannello admin')
+    if op.startswith('push_'):                   # notifiche degli accessi su questo dispositivo
+        if not sid:
+            raise Errore(401, 'accesso richiesto')
+        if not sess:                             # senza account: la sessione della placca deve essere vera
+            alla_placca('/cgi-bin/webapi.cgi?api=unlock_passwd', None, sid)
+        chi, chi_ruolo = (sess['user'], sess['ruolo']) if sess else ('admin', 'admin')
+        ep = urllib.parse.unquote_plus(campi.get('endpoint', ''))
+        if op == 'push_info':
+            mio = next((i for i in iscrizioni() if ep and i.get('endpoint') == ep), None)
+            r = {'disponibile': CRITTO, 'chiave': vapid_pubblica() if CRITTO else '',
+                 'iscritto': bool(mio), 'modo': mio.get('modo', 'tutte') if mio else 'tutte',
+                 'placca_pass': bool(leggi_placca_hash()), 'errore': _SORVEGLIA['errore']}
+            return js, json.dumps(r).encode('utf-8'), None
+        if op == 'push_iscrivi':
+            iscrivi(chi, chi_ruolo, ep, campi.get('p256dh', ''), campi.get('auth', ''), campi.get('modo', 'tutte'))
+            return js, b'{"ok":1}', None
+        if op == 'push_cancella':
+            togli_iscrizione(ep, None if chi_ruolo == 'admin' else chi)
+            return js, b'{"ok":1}', None
+        if op == 'push_prova':
+            mio = next((i for i in iscrizioni() if ep and i.get('endpoint') == ep), None)
+            if not mio:
+                raise Errore(400, 'questo dispositivo non e\' iscritto')
+            st = invia_push(mio, {'title': '🔔 Citofono', 'body': 'Le notifiche degli accessi funzionano.',
+                                  'tag': 'prova', 'url': '/#accessi'})
+            if st in (404, 410):
+                togli_iscrizione(ep)
+                raise Errore(410, 'il browser ha annullato l\'iscrizione: riattiva le notifiche')
+            if not 200 <= st < 300:
+                raise Errore(502, 'il servizio di notifiche ha risposto %s' % (st or 'niente'))
+            return js, b'{"ok":1}', None
+        raise Errore(400, 'operazione sconosciuta')
     if op == 'registro':                         # entrate: il gestore vede tutto, l'utente solo le sue
         if not sid:
             raise Errore(401, 'accesso richiesto')
@@ -1373,6 +1691,7 @@ def main():
         ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         ctx.load_cert_chain(CONF['CERT'], CONF['CHIAVE_TLS'])
         server.socket = ctx.wrap_socket(server.socket, server_side=True)
+    threading.Thread(target=sorveglia, daemon=True).start()   # notifiche degli accessi
     print('citofono su %s://%s:%s/  (admin: /admin)  -> placca %s' % (
         'https' if CONF['CERT'] else 'http', CONF['INDIRIZZO'], CONF['PORTA'], CONF['PLACCA'] or '(da impostare)'),
         flush=True)
