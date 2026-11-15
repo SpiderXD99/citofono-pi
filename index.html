@@ -329,12 +329,19 @@ details.scheda[open] > summary { margin-bottom: 14px; }
         </div>
         <p class="nota">I codici a tempo valgono secondo l'orologio della placca. Telefono adesso: <strong id="oTelefono">--:--</strong></p>
         <div id="oRighe"></div>
-        <form id="fMonitorPass" novalidate>
-          <label>Password web del monitor <small>— <span id="oMonPass" class="stato spento">…</span></small>
-            <input name="monitor_pass" type="password" autocomplete="off" placeholder="serve per leggere e impostare l'ora del monitor"></label>
-          <p class="errore" id="eMonitorPass" role="alert"></p>
-          <button class="btn piccolo">Salva password del monitor</button>
-        </form>
+      </section>
+
+      <section class="scheda" id="sNotificheImp">
+        <div class="testa">
+          <h2>Notifiche</h2>
+          <span id="iStato" class="stato spento">…</span>
+        </div>
+        <p class="nota" id="iInfo">Avvisi sul telefono quando qualcuno entra, anche col sito chiuso.</p>
+        <p class="errore" id="iErrore" role="alert"></p>
+        <div class="azioni">
+          <button id="iAttiva" class="btn piccolo primario" type="button">Chiedi accesso alle notifiche</button>
+          <button id="iProva" class="btn piccolo" type="button">Prova notifiche</button>
+        </div>
       </section>
 
       <section class="scheda">
@@ -1384,9 +1391,12 @@ details.scheda[open] > summary { margin-bottom: 14px; }
   function mostraPagina(id) {
     ['pCodici', 'pLog', 'pImpostazioni', 'pAdmin'].forEach((p) => { $('#' + p).hidden = p !== id; });
     document.querySelectorAll('.scheda-btn').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.pagina === id)));
-    if (id === 'pImpostazioni') { prova(() => tunnel('stato')); prova(caricaOrologio); statoPassMonitor(); }
+    if (id === 'pImpostazioni') {
+      prova(() => tunnel('stato')); prova(caricaOrologio);
+      caricaNotifiche().catch((e) => erroreNotifiche(e.message));
+    }
     if (id === 'pAdmin') caricaAdmin();
-    if (id === 'pLog') { prova(caricaLog); caricaNotifiche().catch((e) => { $('#eNotifiche').textContent = e.message; }); }
+    if (id === 'pLog') { prova(caricaLog); caricaNotifiche().catch((e) => erroreNotifiche(e.message)); }
   }
   // ---------- registro entrate (Log) ----------
   // la placca salva ogni apertura in /data/unlock.xml: il server lo legge e lo rimanda come elenco
@@ -1449,13 +1459,18 @@ details.scheda[open] > summary { margin-bottom: 14px; }
   }
   function iPhone() { return /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); }
   function appInstallata() { return matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; }
-  function disegnaNotifiche(stato, testo, attive) {
-    const st = $('#nStato');
-    st.textContent = stato; st.className = 'stato ' + (attive ? 'acceso' : 'spento');
-    $('#nInfo').textContent = testo;
-    $('#nAttiva').hidden = !!attive;
+  // la stessa situazione e' mostrata in Accessi e in Impostazioni › Notifiche
+  function disegnaNotifiche(stato, testo, attive, possibile) {
+    for (const id of ['#nStato', '#iStato']) {
+      const st = $(id); st.textContent = stato; st.className = 'stato ' + (attive ? 'acceso' : 'spento');
+    }
+    $('#nInfo').textContent = testo; $('#iInfo').textContent = testo;
+    $('#nAttiva').hidden = !!attive || possibile === false;
     $('#nProva').hidden = !attive; $('#nDisattiva').hidden = !attive;
+    $('#iAttiva').disabled = possibile === false;
+    $('#iAttiva').textContent = attive ? 'Rinnova accesso alle notifiche' : 'Chiedi accesso alle notifiche';
   }
+  function erroreNotifiche(t) { $('#eNotifiche').textContent = t; $('#iErrore').textContent = t; }
   // perche' su questo dispositivo non si puo' (o '' se si puo')
   function ostacoloNotifiche() {
     if (iPhone() && !appInstallata()) return 'Su iPhone le notifiche arrivano solo dall’app: tocca Condividi › «Aggiungi alla schermata Home», apri Citofono da lì e torna qui.';
@@ -1468,28 +1483,27 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     catch (e) { throw new Error('Il browser non accetta questo indirizzo per le notifiche: apri il sito dall’indirizzo pubblico (https), non da quello di casa.'); }
   }
   async function caricaNotifiche() {
-    $('#eNotifiche').textContent = '';
+    erroreNotifiche('');
     const no = ostacoloNotifiche();
-    if (no) { disegnaNotifiche('non disponibili', no, false); $('#nAttiva').hidden = true; return; }
+    if (no) { disegnaNotifiche('non disponibili', no, false, false); return; }
     let reg;
-    try { reg = await registrazioneSW(); } catch (e) { disegnaNotifiche('non disponibili', e.message, false); $('#nAttiva').hidden = true; return; }
+    try { reg = await registrazioneSW(); } catch (e) { disegnaNotifiche('non disponibili', e.message, false, false); return; }
     NOTIFICHE.reg = reg;
     NOTIFICHE.sub = await reg.pushManager.getSubscription();
     const info = json(await conSessione({ op: 'push_info', endpoint: NOTIFICHE.sub ? NOTIFICHE.sub.endpoint : '' }));
     NOTIFICHE.info = info;
-    if (!info.disponibile) { disegnaNotifiche('non disponibili', 'Sul Raspberry manca un componente: sudo apt install python3-cryptography, poi riavvia il servizio citofono.', false); $('#nAttiva').hidden = true; return; }
+    if (!info.disponibile) { disegnaNotifiche('non disponibili', 'Sul Raspberry manca un componente: sudo apt install python3-cryptography, poi riavvia il servizio citofono.', false, false); return; }
     $('#nModo').value = info.modo || 'tutte';
     const attive = !!(NOTIFICHE.sub && info.iscritto && Notification.permission === 'granted');
     let testo = attive ? 'Riceverai un avviso quando qualcuno entra' + (info.modo === 'negati' ? ' senza riuscirci.' : '.') + ' Nelle notifiche non compaiono PIN o numeri di tessera.'
       : (Notification.permission === 'denied' ? 'Le notifiche sono bloccate per questo sito: riattivale dalle impostazioni del browser.' : 'Ricevi un avviso sul telefono quando qualcuno entra, anche col sito chiuso.');
     if (!info.placca_pass) testo += ' ⚠ Il Raspberry non ha la password della placca (Admin › Utenti della pagina): finché manca non può leggere gli accessi.';
     else if (attive && info.errore) testo += ' ⚠ ' + info.errore + '.';
-    disegnaNotifiche(attive ? 'attive' : 'spente', testo, attive);
-    if (Notification.permission === 'denied' && !attive) $('#nAttiva').hidden = true;
+    disegnaNotifiche(attive ? 'attive' : 'spente', testo, attive, !(Notification.permission === 'denied' && !attive));
   }
-  async function attivaNotifiche() {
-    const err = $('#eNotifiche'); err.textContent = '';
-    const b = $('#nAttiva');
+  async function attivaNotifiche(ev) {
+    erroreNotifiche('');
+    const b = ev && ev.currentTarget ? ev.currentTarget : $('#nAttiva'), etichetta = b.textContent;
     if (b.disabled) return;
     b.disabled = true; b.textContent = 'Attivazione… (può volerci mezzo minuto)';
     await prova(async () => {
@@ -1507,8 +1521,8 @@ details.scheda[open] > summary { margin-bottom: 14px; }
         const j = sub.toJSON();
         await conSessione({ op: 'push_iscrivi', endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, modo: $('#nModo').value });
         await caricaNotifiche();
-      } catch (e) { err.textContent = e.message || String(e); throw e; }
-      finally { b.disabled = false; b.textContent = 'Attiva le notifiche'; }
+      } catch (e) { erroreNotifiche(e.message || String(e)); throw e; }
+      finally { b.disabled = false; if (b.textContent.startsWith('Attivazione')) b.textContent = etichetta; }
     }, 'Notifiche attivate');
   }
   async function disattivaNotifiche() {
@@ -1519,10 +1533,14 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     }, 'Notifiche disattivate');
   }
   async function provaNotifiche() {
+    erroreNotifiche('');
     await prova(async () => {
-      const sub = NOTIFICHE.reg && await NOTIFICHE.reg.pushManager.getSubscription();
-      if (!sub) throw new Error('Attiva prima le notifiche');
-      await conSessione({ op: 'push_prova', endpoint: sub.endpoint });
+      try {
+        if (!NOTIFICHE.reg) await caricaNotifiche();
+        const sub = NOTIFICHE.reg && await NOTIFICHE.reg.pushManager.getSubscription();
+        if (!sub || !NOTIFICHE.info || !NOTIFICHE.info.iscritto) throw new Error('Prima premi «Chiedi accesso alle notifiche»');
+        await conSessione({ op: 'push_prova', endpoint: sub.endpoint });
+      } catch (e) { erroreNotifiche(e.message || String(e)); throw e; }
     }, 'Notifica di prova inviata: dovrebbe arrivare tra pochi secondi');
   }
   async function cambiaModoNotifiche() {
@@ -1535,7 +1553,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     }, 'Preferenza salvata');
   }
 
-  // ---------- orologio di monitor e placca ----------
+  // ---------- orologio della placca ----------
   // l'ora letta dal dispositivo diventa uno scarto rispetto al telefono: poi scorre da sola
   const OROLOGI = {};
   let timerOra = 0, ultimaLetturaOra = 0;
@@ -1556,10 +1574,10 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     let j;
     try { j = json(await conSessione({ op: 'orologio' })); }
     catch (e) {                               // nessuna risposta: la barra lo dice invece di sparire
-      j = { monitor: { errore: e.message }, placca: { errore: e.message } };
+      j = { placca: { errore: e.message } };
       ultimaLetturaOra = Date.now();
     }
-    for (const dove of ['monitor', 'placca']) {
+    for (const dove of ['placca']) {
       const d = j[dove] || {}, t = oraDa(d.ora);
       OROLOGI[dove] = isNaN(t) ? { errore: d.errore || 'ora non disponibile' } : { scarto: t - Date.now(), ntp: !!d.ntp };
     }
@@ -1591,10 +1609,10 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     const box = $('#oRighe');
     if (tutto || !box.children.length) {
       box.textContent = '';
-      for (const k of ['monitor', 'placca']) {
+      for (const k of ['placca']) {
         const o = OROLOGI[k] || { errore: '…' };
         const riga = el('div', 'ora-riga'), sx = el('div');
-        sx.append(el('strong', '', k === 'monitor' ? 'Monitor' : 'Placca'), document.createElement('br'));
+        sx.append(el('strong', '', 'Placca'), document.createElement('br'));
         if (o.errore) {
           sx.append(el('span', 'nota', o.errore));
           riga.append(sx);
@@ -1602,10 +1620,8 @@ details.scheda[open] > summary { margin-bottom: 14px; }
           const val = el('span', 'ora-val'); val.dataset.dove = k;
           const sc = el('span', 'stato ' + (Math.abs(o.scarto) >= 120000 ? 'attesa' : 'acceso'), testoScarto(o.scarto));
           sx.append(val, document.createTextNode(' '), sc);
-          if (o.ntp) sx.append(document.createTextNode(' '), el('span', 'stato acceso', 'automatica'));
           const az = el('div', 'azioni');
-          az.append(bottone('Usa l’ora del telefono', () => impostaOra(k, false)));
-          if (k === 'monitor' && !o.ntp) az.append(bottone('Automatica da Internet', () => impostaOra(k, true)));
+          az.append(bottone('Usa l’ora del telefono', () => impostaOra(k)));
           riga.append(sx, az);
         }
         box.append(riga);
@@ -1622,34 +1638,11 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     const d = new Date();
     return isoGiorno(d) + ' ' + hhmm(d, true);
   }
-  async function impostaOra(dove, ntp) {
-    const nome = dove === 'monitor' ? 'del monitor' : 'della placca';
-    if (ntp && !confirm('Il monitor prenderà l’ora da Internet (NTP). Continuare?')) return;
+  async function impostaOra() {
     await prova(async () => {
-      const campi = { op: 'admin_orologio', dove: dove };
-      if (ntp) campi.ntp = '1'; else campi.ora = oraTelefono();
-      await conSessione(campi);
+      await conSessione({ op: 'admin_orologio', dove: 'placca', ora: oraTelefono() });
       await caricaOrologio();
-    }, 'Ora ' + nome + ' aggiornata');
-  }
-  async function statoPassMonitor() {
-    try {
-      const s = json(await invia({ op: 'admin_state' }));
-      const st = $('#oMonPass');
-      st.textContent = !s.monitor ? 'manca l’indirizzo del monitor (Admin)' : (s.monitor_pass ? 'salvata' : 'non salvata');
-      st.className = 'stato ' + (s.monitor && s.monitor_pass ? 'acceso' : 'spento');
-    } catch (e) { /* solo informativo */ }
-  }
-  async function salvaPassMonitor(ev) {
-    ev.preventDefault();
-    const f = ev.target, err = $('#eMonitorPass'); err.textContent = '';
-    if (!f.monitor_pass.value) { err.textContent = 'Scrivi la password web del monitor'; return; }
-    const ok = await prova(async () => {
-      try { await invia({ op: 'admin_monitor_pass', monitor_pass: f.monitor_pass.value }); }
-      catch (e) { err.textContent = e.message; throw e; }
-      f.reset(); await statoPassMonitor(); await caricaOrologio();
-    }, 'Password del monitor salvata');
-    return ok;
+    }, 'Ora della placca aggiornata');
   }
   async function tunnel(azione, extra) {
     const t = await conSessione(Object.assign({ op: 'tunnel', azione: azione }, extra || {}));
@@ -2054,8 +2047,9 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     $('#nAttiva').addEventListener('click', attivaNotifiche);
     $('#nDisattiva').addEventListener('click', disattivaNotifiche);
     $('#nProva').addEventListener('click', provaNotifiche);
+    $('#iAttiva').addEventListener('click', attivaNotifiche);
+    $('#iProva').addEventListener('click', provaNotifiche);
     $('#nModo').addEventListener('change', cambiaModoNotifiche);
-    $('#fMonitorPass').addEventListener('submit', salvaPassMonitor);
     $('#bOra').addEventListener('click', () => { if (S.ruolo !== 'user') mostraPagina('pImpostazioni'); });
     $('#fFisso').addEventListener('submit', salvaFisso);
     $('#fFisso').addEventListener('input', aggiornaFisso);

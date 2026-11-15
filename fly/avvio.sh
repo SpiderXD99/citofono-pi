@@ -78,7 +78,6 @@ APP_DIR=$APP
 ADMIN=$D/admin.json
 UTENTI=$D/utenti.json
 PLACCA_CRED=$D/placca.json
-MONITOR_CRED=$D/monitor.json
 PUSH=$D/push.json
 PUSH_STATO=$D/push_stato.json
 VAPID=$D/vapid.pem

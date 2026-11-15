@@ -62,7 +62,6 @@ PREDEFINITI = {
     'PONTE_CONF': '/etc/citofono/ponte.conf',
     'UTENTI': '/etc/citofono/utenti.json',
     'PLACCA_CRED': '/etc/citofono/placca.json',
-    'MONITOR_CRED': '/etc/citofono/monitor.json',   # md5 della password web del monitor (orologio)
     'PUSH': '/etc/citofono/push.json',              # dispositivi iscritti alle notifiche
     'PUSH_STATO': '/etc/citofono/push_stato.json',  # entrate gia' notificate
     'VAPID': '/etc/citofono/vapid.pem',             # chiave privata per firmare le notifiche
@@ -85,7 +84,7 @@ CAMPI_SEMPLICI = {'op', 'sid', 'api', 'user', 'hash', 'azione', 'token',
                   'mon_host', 'mon_port', 'mon_user', 'mon_pass', 'placca_ip', 'relay_port',
                   'ssid', 'wifi_pass', 'hs_ssid', 'hs_pass',
                   'pass', 'nuova', 'pin_user', 'pin_pass', 'placca_pass', 'ruolo',
-                  'dove', 'ora', 'ntp', 'monitor_pass', 'endpoint', 'p256dh', 'auth', 'modo'}
+                  'ora', 'endpoint', 'p256dh', 'auth', 'modo'}
 BLOCCATA ='la placca ha bloccato gli accessi per qualche minuto dopo una password sbagliata: riprova tra 2-3 minuti'
 ITER = 210000                              # iterazioni PBKDF2 per la password admin
 SESSIONI = {}                              # token admin -> scadenza (epoch)
@@ -339,14 +338,6 @@ def leggi_placca_hash():
     return _leggi_hash('PLACCA_CRED')
 
 
-def salva_monitor_hash(md5):
-    _salva_hash('MONITOR_CRED', md5)
-
-
-def leggi_monitor_hash():
-    return _leggi_hash('MONITOR_CRED')
-
-
 # sessione della pagina / (porta il ruolo: il server filtra e autorizza di conseguenza)
 def nuova_pinsess(utente, ruolo):
     tok = secrets.token_urlsafe(24)
@@ -534,42 +525,7 @@ def alla_placca(percorso, dati=None, sid=''):
     raise Errore(502, 'la placca %s non risponde' % CONF['PLACCA'])
 
 
-# ---------- orologio di monitor e placca (api=time, uguale sui due) ----------
-_MONITOR_SID = ['']
-
-
-def al_monitor(percorso, dati=None):
-    """Richiesta alla web del monitor con la sua password salvata (md5). Rientra da
-    solo se la sessione e' scaduta."""
-    if not CONF['MONITOR']:
-        raise Errore(400, 'indirizzo del monitor non impostato nel pannello admin')
-    h = leggi_monitor_hash()
-    if not h:
-        raise Errore(400, 'password del monitor non salvata nel pannello admin')
-    base = CONF['MONITOR'].rstrip('/')
-    for giro in range(2):
-        if not _MONITOR_SID[0]:
-            stato, corpo = richiesta(base + '/cgi-bin/webapi.cgi?api=login&username=admin&password=' + h)
-            if stato == 503:
-                raise Errore(503, 'il monitor ha bloccato gli accessi per qualche minuto dopo una password sbagliata')
-            if stato == 0:
-                raise Errore(502, 'il monitor %s non risponde' % CONF['MONITOR'])
-            try:
-                _MONITOR_SID[0] = str(json.loads(corpo)['data']['SessionID'])
-            except (ValueError, KeyError, TypeError):
-                _MONITOR_SID[0] = ''
-            if stato != 200 or not _MONITOR_SID[0]:
-                raise Errore(401, 'password del monitor non corretta (cambiala nel pannello admin)')
-        stato, corpo = richiesta(base + percorso, dati, _MONITOR_SID[0])
-        if stato == 401 and giro == 0:
-            _MONITOR_SID[0] = ''
-            continue
-        if stato == 200:
-            return corpo
-        raise Errore(502, 'il monitor ha risposto %d' % stato)
-    raise Errore(401, 'accesso al monitor non riuscito')
-
-
+# ---------- orologio della placca (api=time) ----------
 def sid_placca(sid):
     """Sessione della placca: quella della pagina, o un accesso con la password salvata."""
     if sid:
@@ -584,55 +540,44 @@ def sid_placca(sid):
         raise Errore(401, 'password della placca non corretta')
 
 
-def _leggi_ora(dove, sid):
-    if dove == 'monitor':
-        corpo = al_monitor('/cgi-bin/webapi.cgi?api=time')
-    else:
-        corpo = alla_placca('/cgi-bin/webapi.cgi?api=time', None, sid_placca(sid))
+def _leggi_ora(sid):
+    corpo = alla_placca('/cgi-bin/webapi.cgi?api=time', None, sid_placca(sid))
     try:
         j = json.loads(corpo.decode('utf-8', 'replace'))
     except ValueError:
-        raise Errore(502, 'risposta non valida (ora del %s)' % dove)
+        raise Errore(502, 'risposta non valida (ora della placca)')
     if not isinstance(j, dict):
         j = {}
     d = j.get('data') if isinstance(j.get('data'), dict) else j
     if not re.fullmatch(r'\d{4}-\d\d-\d\d \d\d:\d\d:\d\d', str(d.get('current_time', ''))):
-        raise Errore(502, "il %s non ha restituito l'ora" % dove)
+        raise Errore(502, "la placca non ha restituito l'ora")
     return d
 
 
-def ora_dispositivo(dove, sid):
-    d = _leggi_ora(dove, sid)
-    return {'ora': d['current_time'], 'ntp': str(d.get('ntp_enable', '0')) == '1',
-            'ntp_server': str(d.get('ntp_server', '')), 'tz': str(d.get('tz', ''))}
+def ora_placca(sid):
+    d = _leggi_ora(sid)
+    return {'ora': d['current_time'], 'tz': str(d.get('tz', ''))}
 
 
-def imposta_ora(dove, sid, ora, ntp):
-    """Imposta l'ora (stringa 'AAAA-MM-GG hh:mm:ss', ora locale) oppure attiva l'NTP.
-    Si rileggono e si rimandano fuso e formati, come fa la web originale."""
-    d = _leggi_ora(dove, sid)
-    if ntp:
-        server = str(d.get('ntp_server', '')).strip() or 'pool.ntp.org'
-        campi = [('ntp_server', server), ('ntp_enable', '1')]
-    else:
-        if not re.fullmatch(r'20\d\d-[01]\d-[0-3]\d [0-2]\d:[0-5]\d:[0-5]\d', ora):
-            raise Errore(400, 'ora non valida')
-        campi = [('current_time', ora), ('ntp_enable', '0')]
+def imposta_ora(sid, ora):
+    """Imposta l'ora della placca (stringa 'AAAA-MM-GG hh:mm:ss', ora locale). Si
+    rileggono e si rimandano fuso e formati, come fa la web originale."""
+    d = _leggi_ora(sid)
+    if not re.fullmatch(r'20\d\d-[01]\d-[0-3]\d [0-2]\d:[0-5]\d:[0-5]\d', ora):
+        raise Errore(400, 'ora non valida')
+    campi = [('current_time', ora), ('ntp_enable', '0')]
     for k in ('tz', 'time_format', 'date_format'):
         if k in d:
             campi.append((k, str(d[k])))
     corpo = '&'.join('%s=%s' % (k, urllib.parse.quote_plus(v)) for k, v in campi)
-    if dove == 'monitor':
-        r = al_monitor('/cgi-bin/webapi.cgi?api=time', corpo)
-    else:
-        r = alla_placca('/cgi-bin/webapi.cgi?api=time', corpo, sid_placca(sid))
+    r = alla_placca('/cgi-bin/webapi.cgi?api=time', corpo, sid_placca(sid))
     try:
         esito = int(str(json.loads(r.decode('utf-8', 'replace')).get('result', '0')))
     except (ValueError, AttributeError):
         esito = 0
     if esito < 0:
-        raise Errore(502, "il %s ha rifiutato l'ora" % dove)
-    return ora_dispositivo(dove, sid)
+        raise Errore(502, "la placca ha rifiutato l'ora")
+    return ora_placca(sid)
 
 
 # ---------- notifiche push degli accessi (Web Push, RFC 8291 + VAPID RFC 8292) ----------
@@ -737,7 +682,7 @@ def invia_push(iscr, dati, ttl=86400):
             conn = http.client.HTTPConnection(u.hostname, u.port or 80, timeout=15)
         conn.request('POST', u.path + (('?' + u.query) if u.query else ''), body=corpo, headers=intest)
         r = conn.getresponse()
-        r.read()
+        _SORVEGLIA['risposta'] = '%d %s' % (r.status, r.read(300).decode('utf-8', 'replace').strip())
         return r.status
     except (OSError, http.client.HTTPException):
         return 0
@@ -1054,13 +999,6 @@ def password_monitor(vecchia, nuova):
                              'user=web&old_password=%s&new_password=%s' % (vecchia, nuova), sid)
     if stato != 200:
         raise Errore(502, 'il monitor ha risposto %d' % stato)
-    try:
-        ok = int(str(json.loads(corpo).get('result', '-1'))) >= 0
-    except (ValueError, AttributeError):
-        ok = False
-    if ok and leggi_monitor_hash():           # tiene allineata la password salvata (orologio)
-        salva_monitor_hash(hashlib.md5(urllib.parse.unquote_plus(nuova).encode('utf-8')).hexdigest())
-        _MONITOR_SID[0] = ''
     return corpo
 
 
@@ -1221,7 +1159,6 @@ def gestisci(corpo, dal_tunnel, cookie, cookie_pin, ip):
         raise Errore(400, 'non disponibile su Fly: relay e Wi-Fi esistono solo sul Raspberry')
     if op == 'admin_state':
         dati = {'placca': CONF['PLACCA'], 'monitor': CONF['MONITOR'], 'pubblico': CONF['PUBBLICO'],
-                'monitor_pass': bool(leggi_monitor_hash()),
                 'lan_only': CONF['ADMIN_LAN_ONLY'], 'tunnel': stato_tunnel(),
                 'piattaforma': CONF['PIATTAFORMA']}
         if su_fly():
@@ -1367,31 +1304,8 @@ def gestisci(corpo, dal_tunnel, cookie, cookie_pin, ip):
             return js, b'{"ok":1}', None
         elimina_utente(urllib.parse.unquote_plus(campi.get('pin_user', '')))
         return js, b'{"ok":1}', None
-    if op == 'admin_monitor_pass':
-        pw = urllib.parse.unquote_plus(campi.get('monitor_pass', ''))
-        if not pw:
-            raise Errore(400, 'scrivi la password web del monitor')
-        vecchio = leggi_monitor_hash()
-        salva_monitor_hash(hashlib.md5(pw.encode('utf-8')).hexdigest())
-        _MONITOR_SID[0] = ''
-        try:
-            al_monitor('/cgi-bin/webapi.cgi?api=time')        # prova subito: si salva solo se giusta
-        except Errore as e:
-            if vecchio:
-                salva_monitor_hash(vecchio)
-            else:
-                try:
-                    os.remove(CONF['MONITOR_CRED'])
-                except OSError:
-                    pass
-            _MONITOR_SID[0] = ''
-            raise Errore(400 if e.stato == 401 else e.stato, 'non salvata: ' + str(e))
-        return js, b'{"ok":1}', None
-    if op == 'admin_orologio':
-        dove = campi.get('dove', '')
-        if dove not in ('monitor', 'placca'):
-            raise Errore(400, 'scegli monitor o placca')
-        r = imposta_ora(dove, sid, urllib.parse.unquote_plus(campi.get('ora', '')), campi.get('ntp') == '1')
+    if op == 'admin_orologio':                    # ora della placca = quella del telefono
+        r = imposta_ora(sid, urllib.parse.unquote_plus(campi.get('ora', '')))
         return js, json.dumps(r).encode('utf-8'), None
     if op == 'admin_update':
         return testo, aggiorna_dal_repo().encode('utf-8') or b'aggiornato\n', None
@@ -1512,7 +1426,8 @@ def gestisci(corpo, dal_tunnel, cookie, cookie_pin, ip):
                                   'tag': 'prova', 'url': '/#accessi'})
             if st in (404, 410):
                 togli_iscrizione(ep)
-                raise Errore(410, 'il browser ha annullato l\'iscrizione: riattiva le notifiche')
+                raise Errore(410, 'il servizio di notifiche non riconosce piu\' questo dispositivo (%s): '
+                                  'chiedi di nuovo l\'accesso alle notifiche' % _SORVEGLIA.get('risposta', ''))
             if not 200 <= st < 300:
                 raise Errore(502, 'il servizio di notifiche ha risposto %s' % (st or 'niente'))
             return js, b'{"ok":1}', None
@@ -1522,15 +1437,14 @@ def gestisci(corpo, dal_tunnel, cookie, cookie_pin, ip):
             raise Errore(401, 'accesso richiesto')
         ids = identificatori_utente(sess['user'], sid) if ruolo == 'user' else None
         return js, json.dumps(leggi_registro(sid, ids)).encode('utf-8'), None
-    if op == 'orologio':                         # ora di monitor e placca (lettura, per tutti)
+    if op == 'orologio':                         # ora della placca (lettura, per tutti)
         if not sid:
             raise Errore(401, 'accesso richiesto')
         r = {'gestore': bool(admin_pagina)}
-        for dove in ('monitor', 'placca'):
-            try:
-                r[dove] = ora_dispositivo(dove, sid)
-            except Errore as e:
-                r[dove] = {'errore': str(e)}
+        try:
+            r['placca'] = ora_placca(sid)
+        except Errore as e:
+            r['placca'] = {'errore': str(e)}
         return js, json.dumps(r).encode('utf-8'), None
     if op == 'api':
         api = campi.get('api', '')
