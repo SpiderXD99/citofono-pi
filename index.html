@@ -200,7 +200,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     <p class="sotto" id="dove"></p>
   </div>
   <span class="giro" aria-hidden="true"></span>
-  <button id="bOra" class="orologio" type="button" hidden title="Data e ora della placca"><strong id="oraVal">--:--</strong><small id="oraDove">placca</small></button>
+  <button id="bOra" class="orologio" type="button" hidden title="Data e ora della placca"><strong id="oraVal">--:--</strong><small id="oraDove" hidden></small></button>
   <button id="bEsci" class="btn piccolo" type="button" hidden>Esci</button>
 </header>
 
@@ -1449,12 +1449,14 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     if (o && o.errore) {
       $('#oraVal').textContent = 'Placca';
       $('#oraDove').textContent = 'non raggiungibile';
+      $('#oraDove').hidden = false;
       b.classList.remove('storto'); b.classList.add('guasto');
       b.title = 'La placca non è raggiungibile: ' + o.errore;
     } else if (o) {
       const d = oraOra('placca'), storto = Math.abs(o.scarto) >= 120000;
       $('#oraVal').textContent = due(d.getDate()) + '/' + due(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' + hhmm(d);
-      $('#oraDove').textContent = storto ? 'placca · ' + testoScarto(o.scarto) : 'placca';
+      $('#oraDove').textContent = storto ? testoScarto(o.scarto) : '';
+      $('#oraDove').hidden = !storto;
       b.classList.remove('guasto'); b.classList.toggle('storto', storto);
       b.title = 'Data e ora della placca' + (storto ? ' (' + testoScarto(o.scarto) + ' rispetto al telefono)' : '');
     }
