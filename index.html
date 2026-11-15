@@ -55,6 +55,9 @@ h2 { font-size: 17px; }
 .orologio small { font-size: 11px; color: var(--muted); }
 .orologio.storto { border-color: var(--wait); }
 .orologio.storto small { color: var(--wait); }
+.orologio.guasto { border-color: var(--danger); }
+.orologio.guasto small { color: var(--danger); font-weight: 700; }
+@media (max-width: 420px) { .orologio strong { font-size: 14px; } .barra .sotto { display: none; } }
 body:not([data-ruolo="user"]) .orologio { cursor: pointer; }
 .ora-riga { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
   padding: 10px 0; border-top: 1px solid var(--line); }
@@ -197,7 +200,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     <p class="sotto" id="dove"></p>
   </div>
   <span class="giro" aria-hidden="true"></span>
-  <button id="bOra" class="orologio" type="button" hidden title="Ora del monitor"><strong id="oraVal">--:--</strong><small id="oraDove">monitor</small></button>
+  <button id="bOra" class="orologio" type="button" hidden title="Data e ora della placca"><strong id="oraVal">--:--</strong><small id="oraDove">placca</small></button>
   <button id="bEsci" class="btn piccolo" type="button" hidden>Esci</button>
 </header>
 
@@ -1425,7 +1428,12 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     return t + (ms > 0 ? ' avanti' : ' indietro');
   }
   async function caricaOrologio() {
-    const j = json(await conSessione({ op: 'orologio' }));
+    let j;
+    try { j = json(await conSessione({ op: 'orologio' })); }
+    catch (e) {                               // nessuna risposta: la barra lo dice invece di sparire
+      j = { monitor: { errore: e.message }, placca: { errore: e.message } };
+      ultimaLetturaOra = Date.now();
+    }
     for (const dove of ['monitor', 'placca']) {
       const d = j[dove] || {}, t = oraDa(d.ora);
       OROLOGI[dove] = isNaN(t) ? { errore: d.errore || 'ora non disponibile' } : { scarto: t - Date.now(), ntp: !!d.ntp };
@@ -1435,15 +1443,20 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     if (!timerOra) timerOra = setInterval(() => disegnaOrologio(false), 1000);
   }
   function disegnaOrologio(tutto) {
-    const dove = OROLOGI.monitor && !OROLOGI.monitor.errore ? 'monitor' : (OROLOGI.placca && !OROLOGI.placca.errore ? 'placca' : '');
-    const b = $('#bOra');
-    b.hidden = !dove;
-    if (dove) {
-      const o = OROLOGI[dove], storto = Math.abs(o.scarto) >= 120000;
-      $('#oraVal').textContent = hhmm(oraOra(dove));
-      $('#oraDove').textContent = storto ? dove + ' · ' + testoScarto(o.scarto) : dove;
-      b.classList.toggle('storto', storto);
-      b.title = 'Ora del ' + dove + (storto ? ' (' + testoScarto(o.scarto) + ' rispetto al telefono)' : '');
+    // nella barra solo la placca: e' il suo orologio che decide se un codice a tempo vale
+    const b = $('#bOra'), o = OROLOGI.placca;
+    b.hidden = !o;
+    if (o && o.errore) {
+      $('#oraVal').textContent = 'Placca';
+      $('#oraDove').textContent = 'non raggiungibile';
+      b.classList.remove('storto'); b.classList.add('guasto');
+      b.title = 'La placca non è raggiungibile: ' + o.errore;
+    } else if (o) {
+      const d = oraOra('placca'), storto = Math.abs(o.scarto) >= 120000;
+      $('#oraVal').textContent = due(d.getDate()) + '/' + due(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' + hhmm(d);
+      $('#oraDove').textContent = storto ? 'placca · ' + testoScarto(o.scarto) : 'placca';
+      b.classList.remove('guasto'); b.classList.toggle('storto', storto);
+      b.title = 'Data e ora della placca' + (storto ? ' (' + testoScarto(o.scarto) + ' rispetto al telefono)' : '');
     }
     $('#oTelefono').textContent = hhmm(new Date(), true);
     const box = $('#oRighe');
