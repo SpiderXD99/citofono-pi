@@ -53,11 +53,13 @@ h2 { font-size: 17px; }
   font: inherit; cursor: default; }
 .orologio strong { font-size: 18px; font-variant-numeric: tabular-nums; }
 .orologio small { font-size: 11px; color: var(--muted); }
+.orologio .ora-data { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.orologio .ora-data:empty { display: none; }
 .orologio.storto { border-color: var(--wait); }
 .orologio.storto small { color: var(--wait); }
 .orologio.guasto { border-color: var(--danger); }
 .orologio.guasto small { color: var(--danger); font-weight: 700; }
-@media (max-width: 420px) { .orologio strong { font-size: 14px; } .barra .sotto { display: none; } }
+@media (max-width: 420px) { .orologio strong { font-size: 16px; } .barra .sotto { display: none; } }
 body:not([data-ruolo="user"]) .orologio { cursor: pointer; }
 .ora-riga { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
   padding: 10px 0; border-top: 1px solid var(--line); }
@@ -200,7 +202,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     <p class="sotto" id="dove"></p>
   </div>
   <span class="giro" aria-hidden="true"></span>
-  <button id="bOra" class="orologio" type="button" hidden title="Data e ora della placca"><strong id="oraVal">--:--</strong><small id="oraDove" hidden></small></button>
+  <button id="bOra" class="orologio" type="button" hidden title="Data e ora della placca"><span id="oraData" class="ora-data"></span><strong id="oraVal">--:--</strong><small id="oraDove" hidden></small></button>
   <button id="bEsci" class="btn piccolo" type="button" hidden>Esci</button>
 </header>
 
@@ -1447,6 +1449,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     const b = $('#bOra'), o = OROLOGI.placca;
     b.hidden = !o;
     if (o && o.errore) {
+      $('#oraData').textContent = '';
       $('#oraVal').textContent = 'Placca';
       $('#oraDove').textContent = 'non raggiungibile';
       $('#oraDove').hidden = false;
@@ -1454,7 +1457,8 @@ details.scheda[open] > summary { margin-bottom: 14px; }
       b.title = 'La placca non è raggiungibile: ' + o.errore;
     } else if (o) {
       const d = oraOra('placca'), storto = Math.abs(o.scarto) >= 120000;
-      $('#oraVal').textContent = due(d.getDate()) + '/' + due(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' + hhmm(d);
+      $('#oraData').textContent = due(d.getDate()) + '/' + due(d.getMonth() + 1) + '/' + d.getFullYear();
+      $('#oraVal').textContent = hhmm(d);
       $('#oraDove').textContent = storto ? testoScarto(o.scarto) : '';
       $('#oraDove').hidden = !storto;
       b.classList.remove('guasto'); b.classList.toggle('storto', storto);
