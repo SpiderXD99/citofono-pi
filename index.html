@@ -1394,13 +1394,15 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     for (const r of records) {
       const li = el('li', 'voce'), r1 = el('div', 'riga');
       const ok = String(r.status) !== '-1';
-      r1.append(el('strong', 'nome', METODO_LOG[r.unlock_type] || 'Apertura'),
+      // nome in grassetto; senza nome: chi ha aperto senza codice (citofono, pulsante) o «Sconosciuto»
+      const haNome = r.name && r.name !== 'None', haNumero = r.number && r.number !== 'None';
+      const titolo = haNome ? r.name : (haNumero ? 'Sconosciuto' : (METODO_LOG[r.unlock_type] || 'Apertura'));
+      r1.append(el('strong', 'nome', titolo),
         el('span', 'stato ' + (ok ? 'acceso' : 'spento'), ok ? 'aperto' : 'negato'));
       const dett = [];
+      if (haNumero) dett.push((r.unlock_type === '0' ? 'Tessera ' : 'PIN ') + nascondi(r.number));
+      else if (haNome && METODO_LOG[r.unlock_type]) dett.push(METODO_LOG[r.unlock_type]);
       const q = quandoLog(r.ts); if (q) dett.push(q);
-      if (r.name && r.name !== 'None') dett.push(r.name);
-      if (r.number && r.number !== 'None') dett.push(r.unlock_type === '1' ? 'PIN ' + nascondi(r.number) : r.number);
-      if (r.relays && r.relays !== '-1') dett.push(testoRele(r.relays));
       li.append(r1, el('div', 'dettagli', dett.join(' · ')));
       ul.append(li);
     }
