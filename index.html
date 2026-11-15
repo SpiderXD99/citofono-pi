@@ -292,7 +292,10 @@ details.scheda[open] > summary { margin-bottom: 14px; }
       <section class="scheda">
         <div class="testa">
           <h2 id="tLog">Entrate</h2>
-          <button id="bLog" class="btn piccolo" type="button">Aggiorna</button>
+          <div class="azioni">
+            <button id="bLogMostra" class="btn piccolo" type="button" aria-pressed="false">Mostra codici</button>
+            <button id="bLog" class="btn piccolo" type="button">Aggiorna</button>
+          </div>
         </div>
         <p class="nota" id="nLog"></p>
         <div class="riga solo-admin" id="rLogOn" style="justify-content:flex-start" hidden>
@@ -1380,6 +1383,10 @@ details.scheda[open] > summary { margin-bottom: 14px; }
   }
   function disegnaLog(j) {
     const records = (j.list || []).slice().sort((a, b) => (parseInt(b.ts, 10) || 0) - (parseInt(a.ts, 10) || 0));
+    S.log = j;
+    const bm = $('#bLogMostra');
+    bm.textContent = S.mostra ? 'Nascondi codici' : 'Mostra codici';
+    bm.setAttribute('aria-pressed', String(S.mostra));
     const ul = $('#lLog'); ul.textContent = '';
     const spento = !j.enable;
     $('#rLogOn').hidden = !spento;
@@ -1856,7 +1863,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
   function esci() {
     fermaLettura();
     dimenticaCredenziali();
-    Object.assign(S, { hash: '', sid: '', persone: [], fissi: [], card: null, mostra: false });
+    Object.assign(S, { hash: '', sid: '', persone: [], fissi: [], card: null, mostra: false, log: null });
     $('#sMaster').hidden = true;
     $('#lPersone').textContent = '';
     $('#lFissi').textContent = '';
@@ -1886,7 +1893,10 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     $('#bNuovo').addEventListener('click', () => apriPersona(null));
     $('#bNuovoFisso').addEventListener('click', () => apriFisso(null));
     $('#bAggiorna').addEventListener('click', () => prova(caricaTutto, 'Aggiornato'));
-    $('#bMostra').addEventListener('click', () => { S.mostra = !S.mostra; disegna(); });
+    // un solo interruttore per Codici e Log: mostra o nasconde PIN e numeri delle tessere
+    const cambiaMostra = () => { S.mostra = !S.mostra; disegna(); if (S.log) disegnaLog(S.log); };
+    $('#bMostra').addEventListener('click', cambiaMostra);
+    $('#bLogMostra').addEventListener('click', cambiaMostra);
     $('#fPersona').addEventListener('submit', salvaPersona);
     $('#dPersona').addEventListener('close', fermaLettura);
     $('#fMaster').addEventListener('submit', salvaMaster);
