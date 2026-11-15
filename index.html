@@ -48,6 +48,18 @@ h2 { font-size: 17px; }
 .barra .sotto { margin: 2px 0 0; font-size: 13px; color: var(--muted);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .barra .logo { width: 34px; height: 34px; border-radius: 9px; flex: none; }
+.orologio { flex: none; display: flex; flex-direction: column; align-items: flex-end; line-height: 1.1;
+  padding: 4px 8px; border-radius: 9px; border: 1px solid transparent; background: none; color: var(--text);
+  font: inherit; cursor: default; }
+.orologio strong { font-size: 18px; font-variant-numeric: tabular-nums; }
+.orologio small { font-size: 11px; color: var(--muted); }
+.orologio.storto { border-color: var(--wait); }
+.orologio.storto small { color: var(--wait); }
+body:not([data-ruolo="user"]) .orologio { cursor: pointer; }
+.ora-riga { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+  padding: 10px 0; border-top: 1px solid var(--line); }
+.ora-riga:first-of-type { border-top: 0; }
+.ora-riga .ora-val { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .giro { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--line);
   border-top-color: var(--accent); visibility: hidden; animation: gira .8s linear infinite; }
 body.occupato .giro { visibility: visible; }
@@ -185,6 +197,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     <p class="sotto" id="dove"></p>
   </div>
   <span class="giro" aria-hidden="true"></span>
+  <button id="bOra" class="orologio" type="button" hidden title="Ora del monitor"><strong id="oraVal">--:--</strong><small id="oraDove">monitor</small></button>
   <button id="bEsci" class="btn piccolo" type="button" hidden>Esci</button>
 </header>
 
@@ -276,8 +289,8 @@ details.scheda[open] > summary { margin-bottom: 14px; }
           <h2 id="tLog">Entrate</h2>
           <button id="bLog" class="btn piccolo" type="button">Aggiorna</button>
         </div>
-        <p class="nota solo-admin" id="nLog"></p>
-        <div class="riga solo-admin" style="justify-content:flex-start">
+        <p class="nota" id="nLog"></p>
+        <div class="riga solo-admin" id="rLogOn" style="justify-content:flex-start" hidden>
           <button id="bLogOn" class="btn piccolo" type="button">Attiva registro</button>
         </div>
         <ul id="lLog" class="elenco"></ul>
@@ -285,6 +298,21 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     </div>
 
     <div id="pImpostazioni" class="solo-admin" hidden>
+      <section class="scheda" id="sOrologio">
+        <div class="testa">
+          <h2>Orologio</h2>
+          <button id="oAggiorna" class="btn piccolo" type="button">Rileggi</button>
+        </div>
+        <p class="nota">I codici a tempo valgono secondo l'orologio della placca. Telefono adesso: <strong id="oTelefono">--:--</strong></p>
+        <div id="oRighe"></div>
+        <form id="fMonitorPass" novalidate>
+          <label>Password web del monitor <small>— <span id="oMonPass" class="stato spento">…</span></small>
+            <input name="monitor_pass" type="password" autocomplete="off" placeholder="serve per leggere e impostare l'ora del monitor"></label>
+          <p class="errore" id="eMonitorPass" role="alert"></p>
+          <button class="btn piccolo">Salva password del monitor</button>
+        </form>
+      </section>
+
       <section class="scheda">
         <div class="testa">
           <h2>Accesso da fuori (tunnel)</h2>
@@ -1332,52 +1360,154 @@ details.scheda[open] > summary { margin-bottom: 14px; }
   function mostraPagina(id) {
     ['pCodici', 'pLog', 'pImpostazioni', 'pAdmin'].forEach((p) => { $('#' + p).hidden = p !== id; });
     document.querySelectorAll('.scheda-btn').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.pagina === id)));
-    if (id === 'pImpostazioni') prova(() => tunnel('stato'));
+    if (id === 'pImpostazioni') { prova(() => tunnel('stato')); prova(caricaOrologio); statoPassMonitor(); }
     if (id === 'pAdmin') caricaAdmin();
     if (id === 'pLog') prova(caricaLog);
   }
   // ---------- registro entrate (Log) ----------
-  const campoLog = (r, re) => { for (const k in r) if (re.test(k)) return String(r[k]); return ''; };
-  function estraiRecordLog(j) {
-    const d = (j && j.data !== undefined) ? j.data : j;
-    if (Array.isArray(d)) return d;
-    if (!d || typeof d !== 'object') return [];
-    for (const k of ['list', 'logs', 'records', 'log', 'items', 'rows']) if (Array.isArray(d[k])) return d[k];
-    const idx = {};
-    for (const k in d) { const m = /^[A-Za-z]+_?(\d+)_(.+)$/.exec(k); if (m) { (idx[m[1]] = idx[m[1]] || {})[m[2]] = d[k]; } }
-    return Object.keys(idx).sort((a, b) => a - b).map((i) => idx[i]);
+  // la placca salva ogni apertura in /data/unlock.xml: il server lo legge e lo rimanda come elenco
+  const METODO_LOG = { '0': 'Tessera', '1': 'PIN', '2': 'Citofono / app', '3': 'Pulsante di uscita' };
+  function quandoLog(ts) {
+    const n = parseInt(ts, 10);
+    if (!n) return '';
+    const d = new Date(n * 1000);
+    return data(isoGiorno(d)) + ' ' + due(d.getHours()) + ':' + due(d.getMinutes());
   }
-  function metodoLog(r) {
-    const t = campoLog(r, /type|mode|way/i);
-    if (t === '1') return 'PIN';
-    if (t === '2') return 'HTTP';
-    if (campoLog(r, /card|tessera|rfid/i)) return 'Tessera';
-    if (t === '3' || t === '4') return 'Tessera';
-    return 'codice';
-  }
-  function disegnaLog(records) {
+  function disegnaLog(j) {
+    const records = (j.list || []).slice().sort((a, b) => (parseInt(b.ts, 10) || 0) - (parseInt(a.ts, 10) || 0));
     const ul = $('#lLog'); ul.textContent = '';
+    const spento = !j.enable;
+    $('#rLogOn').hidden = !spento;
+    $('#nLog').textContent = spento
+      ? (S.ruolo === 'user' ? 'Il registro delle entrate non è attivo: chiedi al gestore.' : 'Il registro è spento: la placca non sta salvando le entrate.')
+      : 'Orari secondo l’orologio della placca.';
     $('#tLog').textContent = 'Entrate' + (records.length ? ' (' + records.length + ')' : '');
-    if (!records.length) { ul.append(el('li', 'vuoto', S.ruolo === 'user' ? 'Nessuna tua entrata registrata.' : 'Nessuna entrata registrata. Attiva il registro qui sopra.')); return; }
+    if (!records.length) {
+      if (!spento) ul.append(el('li', 'vuoto', S.ruolo === 'user' ? 'Nessuna tua entrata registrata.' : 'Nessuna entrata registrata.'));
+      return;
+    }
     for (const r of records) {
       const li = el('li', 'voce'), r1 = el('div', 'riga');
-      const st = campoLog(r, /status|result|state|esito/i);
-      const ok = st === '' || Number(st) >= 0;
-      r1.append(el('strong', 'nome', metodoLog(r)), el('span', 'stato ' + (ok ? 'acceso' : 'spento'), ok ? 'aperto' : 'negato'));
+      const ok = String(r.status) !== '-1';
+      r1.append(el('strong', 'nome', METODO_LOG[r.unlock_type] || 'Apertura'),
+        el('span', 'stato ' + (ok ? 'acceso' : 'spento'), ok ? 'aperto' : 'negato'));
       const dett = [];
-      const chi = campoLog(r, /name|user|person/i); if (chi && chi !== 'None') dett.push(chi);
-      const rel = campoLog(r, /relay/i); if (rel !== '') dett.push(testoRele(rel));
-      const quando = campoLog(r, /time|date|data|when/i); if (quando) dett.push(quando);
+      const q = quandoLog(r.ts); if (q) dett.push(q);
+      if (r.name && r.name !== 'None') dett.push(r.name);
+      if (r.number && r.number !== 'None') dett.push(r.unlock_type === '1' ? 'PIN ' + nascondi(r.number) : r.number);
+      if (r.relays && r.relays !== '-1') dett.push(testoRele(r.relays));
       li.append(r1, el('div', 'dettagli', dett.join(' · ')));
       ul.append(li);
     }
   }
   async function caricaLog() {
-    const j = json(await conSessione({ op: 'api', api: 'unlock_logs' }));
-    disegnaLog(estraiRecordLog(j));
+    disegnaLog(json(await conSessione({ op: 'registro' })));
   }
   async function attivaLog() {
     await prova(async () => { await conSessione({ op: 'api', api: 'unlock_logs', enable: '1' }); await caricaLog(); }, 'Registro attivato');
+  }
+
+  // ---------- orologio di monitor e placca ----------
+  // l'ora letta dal dispositivo diventa uno scarto rispetto al telefono: poi scorre da sola
+  const OROLOGI = {};
+  let timerOra = 0, ultimaLetturaOra = 0;
+  function oraDa(testo) {
+    const m = /^(\d{4})-(\d\d)-(\d\d) (\d\d):(\d\d):(\d\d)$/.exec(testo || '');
+    return m ? new Date(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime() : NaN;
+  }
+  const oraOra = (dove) => new Date(Date.now() + OROLOGI[dove].scarto);
+  const hhmm = (d, sec) => due(d.getHours()) + ':' + due(d.getMinutes()) + (sec ? ':' + due(d.getSeconds()) : '');
+  function testoScarto(ms) {
+    const s = Math.round(Math.abs(ms) / 1000);
+    if (s < 60) return 'giusto';
+    const m = Math.round(s / 60);
+    const t = m < 120 ? m + ' min' : (m < 2880 ? Math.round(m / 60) + ' ore' : Math.round(m / 1440) + ' giorni');
+    return t + (ms > 0 ? ' avanti' : ' indietro');
+  }
+  async function caricaOrologio() {
+    const j = json(await conSessione({ op: 'orologio' }));
+    for (const dove of ['monitor', 'placca']) {
+      const d = j[dove] || {}, t = oraDa(d.ora);
+      OROLOGI[dove] = isNaN(t) ? { errore: d.errore || 'ora non disponibile' } : { scarto: t - Date.now(), ntp: !!d.ntp };
+    }
+    ultimaLetturaOra = Date.now();
+    disegnaOrologio(true);
+    if (!timerOra) timerOra = setInterval(() => disegnaOrologio(false), 1000);
+  }
+  function disegnaOrologio(tutto) {
+    const dove = OROLOGI.monitor && !OROLOGI.monitor.errore ? 'monitor' : (OROLOGI.placca && !OROLOGI.placca.errore ? 'placca' : '');
+    const b = $('#bOra');
+    b.hidden = !dove;
+    if (dove) {
+      const o = OROLOGI[dove], storto = Math.abs(o.scarto) >= 120000;
+      $('#oraVal').textContent = hhmm(oraOra(dove));
+      $('#oraDove').textContent = storto ? dove + ' · ' + testoScarto(o.scarto) : dove;
+      b.classList.toggle('storto', storto);
+      b.title = 'Ora del ' + dove + (storto ? ' (' + testoScarto(o.scarto) + ' rispetto al telefono)' : '');
+    }
+    $('#oTelefono').textContent = hhmm(new Date(), true);
+    const box = $('#oRighe');
+    if (tutto || !box.children.length) {
+      box.textContent = '';
+      for (const k of ['monitor', 'placca']) {
+        const o = OROLOGI[k] || { errore: '…' };
+        const riga = el('div', 'ora-riga'), sx = el('div');
+        sx.append(el('strong', '', k === 'monitor' ? 'Monitor' : 'Placca'), document.createElement('br'));
+        if (o.errore) {
+          sx.append(el('span', 'nota', o.errore));
+          riga.append(sx);
+        } else {
+          const val = el('span', 'ora-val'); val.dataset.dove = k;
+          const sc = el('span', 'stato ' + (Math.abs(o.scarto) >= 120000 ? 'attesa' : 'acceso'), testoScarto(o.scarto));
+          sx.append(val, document.createTextNode(' '), sc);
+          if (o.ntp) sx.append(document.createTextNode(' '), el('span', 'stato acceso', 'automatica'));
+          const az = el('div', 'azioni');
+          az.append(bottone('Usa l’ora del telefono', () => impostaOra(k, false)));
+          if (k === 'monitor' && !o.ntp) az.append(bottone('Automatica da Internet', () => impostaOra(k, true)));
+          riga.append(sx, az);
+        }
+        box.append(riga);
+      }
+    }
+    box.querySelectorAll('.ora-val').forEach((v) => { v.textContent = hhmm(oraOra(v.dataset.dove), true); });
+    // ogni 10 minuti (a pagina visibile) si rilegge, per non accumulare deriva
+    if (!document.hidden && ultimaLetturaOra && Date.now() - ultimaLetturaOra > 600000 && S.pass && !$('#vApp').hidden) {
+      ultimaLetturaOra = Date.now();
+      caricaOrologio().catch(() => {});
+    }
+  }
+  function oraTelefono() {
+    const d = new Date();
+    return isoGiorno(d) + ' ' + hhmm(d, true);
+  }
+  async function impostaOra(dove, ntp) {
+    const nome = dove === 'monitor' ? 'del monitor' : 'della placca';
+    if (ntp && !confirm('Il monitor prenderà l’ora da Internet (NTP). Continuare?')) return;
+    await prova(async () => {
+      const campi = { op: 'admin_orologio', dove: dove };
+      if (ntp) campi.ntp = '1'; else campi.ora = oraTelefono();
+      await conSessione(campi);
+      await caricaOrologio();
+    }, 'Ora ' + nome + ' aggiornata');
+  }
+  async function statoPassMonitor() {
+    try {
+      const s = json(await invia({ op: 'admin_state' }));
+      const st = $('#oMonPass');
+      st.textContent = !s.monitor ? 'manca l’indirizzo del monitor (Admin)' : (s.monitor_pass ? 'salvata' : 'non salvata');
+      st.className = 'stato ' + (s.monitor && s.monitor_pass ? 'acceso' : 'spento');
+    } catch (e) { /* solo informativo */ }
+  }
+  async function salvaPassMonitor(ev) {
+    ev.preventDefault();
+    const f = ev.target, err = $('#eMonitorPass'); err.textContent = '';
+    if (!f.monitor_pass.value) { err.textContent = 'Scrivi la password web del monitor'; return; }
+    const ok = await prova(async () => {
+      try { await invia({ op: 'admin_monitor_pass', monitor_pass: f.monitor_pass.value }); }
+      catch (e) { err.textContent = e.message; throw e; }
+      f.reset(); await statoPassMonitor(); await caricaOrologio();
+    }, 'Password del monitor salvata');
+    return ok;
   }
   async function tunnel(azione, extra) {
     const t = await conSessione(Object.assign({ op: 'tunnel', azione: azione }, extra || {}));
@@ -1693,7 +1823,8 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     S.user = f.user.value.trim() || 'admin';
     S.pass = f.pass.value;
     S.sid = '';
-    try { await occupato(async () => { await accedi(); await chiStato(); if (!S.bootstrap) await caricaTutto(); }); }
+    try { await occupato(async () => { await accedi(); await chiStato(); if (!S.bootstrap) await caricaTutto(); });
+        if (!S.bootstrap) caricaOrologio().catch(() => {}); }
     catch (e) { S.pass = ''; $('#eAccesso').textContent = e.message; return; }
     salvaCredenziali(f.ricorda.checked);
     salvaUltimoUtente(S.user);
@@ -1708,6 +1839,9 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     $('#sMaster').hidden = true;
     $('#lPersone').textContent = '';
     $('#lFissi').textContent = '';
+    clearInterval(timerOra); timerOra = 0; ultimaLetturaOra = 0;
+    for (const k in OROLOGI) delete OROLOGI[k];
+    $('#bOra').hidden = true; $('#lLog').textContent = '';
     const ultimo = leggiUltimoUtente();                 // tieni il nome utente precompilato
     if (ultimo) { $('#fAccesso').user.value = ultimo; }
     $('#fAccesso').pass.value = '';
@@ -1770,6 +1904,9 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     $('#cVerifica').addEventListener('click', caricaAdmin);
     $('#bLog').addEventListener('click', () => prova(caricaLog));
     $('#bLogOn').addEventListener('click', attivaLog);
+    $('#oAggiorna').addEventListener('click', () => prova(caricaOrologio));
+    $('#fMonitorPass').addEventListener('submit', salvaPassMonitor);
+    $('#bOra').addEventListener('click', () => { if (S.ruolo !== 'user') mostraPagina('pImpostazioni'); });
     $('#fFisso').addEventListener('submit', salvaFisso);
     $('#fFisso').addEventListener('input', aggiornaFisso);
     $('#bCopia').addEventListener('click', copia);
@@ -1777,7 +1914,9 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     document.querySelectorAll('[data-chiudi]').forEach((b) => b.addEventListener('click', () => b.closest('dialog').close()));
     document.querySelectorAll('dialog').forEach((d) => d.addEventListener('click', (ev) => { if (ev.target === d) d.close(); }));
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden && S.pass && !$('#vApp').hidden && !document.querySelector('dialog[open]')) prova(caricaTutto);
+      if (!document.hidden && S.pass && !$('#vApp').hidden && !document.querySelector('dialog[open]')) {
+        prova(caricaTutto); caricaOrologio().catch(() => {});
+      }
     });
   }
   async function avvio() {
@@ -1796,6 +1935,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
       $('#fAccesso').user.value = c.user;
       try {
         await occupato(async () => { await accedi(); await chiStato(); if (!S.bootstrap) await caricaTutto(); });
+        if (!S.bootstrap) caricaOrologio().catch(() => {});
         mostra('app'); if (S.bootstrap) mostraPagina('pAdmin'); return;
       } catch (e) { S.pass = ''; $('#eAccesso').textContent = e.message; }
     }

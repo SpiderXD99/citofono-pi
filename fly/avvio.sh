@@ -78,6 +78,7 @@ APP_DIR=$APP
 ADMIN=$D/admin.json
 UTENTI=$D/utenti.json
 PLACCA_CRED=$D/placca.json
+MONITOR_CRED=$D/monitor.json
 PROPRIETA=$D/proprieta.json
 PONTE_CONF=$D/ponte.conf
 TUNNEL_ENV=$D/tunnel.env
