@@ -1405,7 +1405,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
       const haNome = r.name && r.name !== 'None', haNumero = r.number && r.number !== 'None';
       const titolo = haNome ? r.name : (haNumero ? 'Sconosciuto' : (METODO_LOG[r.unlock_type] || 'Apertura'));
       r1.append(el('strong', 'nome', titolo),
-        el('span', 'stato ' + (ok ? 'acceso' : 'spento'), ok ? 'aperto' : 'negato'));
+        el('span', 'stato ' + (ok ? 'acceso' : 'allarme'), ok ? 'aperto' : 'negato'));
       const dett = [];
       if (haNumero) dett.push((r.unlock_type === '0' ? 'Tessera ' : 'PIN ') + nascondi(r.number));
       else if (haNome && METODO_LOG[r.unlock_type]) dett.push(METODO_LOG[r.unlock_type]);
