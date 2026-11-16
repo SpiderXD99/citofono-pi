@@ -84,8 +84,13 @@ master** della placca. Il numero si legge in due modi:
 
 ## Notifiche degli accessi
 
-Nella scheda **Accessi** › «Notifiche su questo dispositivo» ogni telefono può attivare un
-avviso quando qualcuno entra (o solo quando un accesso viene negato), anche col sito chiuso.
+In **Impostazioni** › «Notifiche su questo dispositivo» ogni telefono può attivare un
+avviso, anche col sito chiuso. In «Avvisami di» si spuntano una o più voci (vale l'unione):
+**tutti gli accessi**, **i miei accessi** (le persone create da quell'utente), **accessi
+falliti** (PIN o tessera non validi) e **accessi al sito** (ingressi e tentativi falliti
+nella pagina e nel pannello admin, con utente e IP ma mai la password; più tentativi in 20
+secondi arrivano in un'unica notifica). L'utente semplice vede solo «i miei accessi» e
+«accessi falliti», sempre ristretti alle sue persone.
 Il Pi legge il registro della placca ogni 20 secondi e manda una notifica Web Push cifrata
 tramite il servizio del browser (Google, Apple, Mozilla, Microsoft). Le notifiche non
 contengono PIN né numeri di tessera; l'utente semplice riceve solo le proprie entrate.

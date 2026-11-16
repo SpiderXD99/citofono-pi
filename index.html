@@ -223,7 +223,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     <nav class="schede" aria-label="Sezioni">
       <button type="button" class="scheda-btn" data-pagina="pCodici" aria-pressed="true">Codici</button>
       <button type="button" class="scheda-btn" data-pagina="pLog" aria-pressed="false">Accessi</button>
-      <button type="button" class="scheda-btn solo-admin" data-pagina="pImpostazioni" aria-pressed="false">Impostazioni</button>
+      <button type="button" class="scheda-btn" data-pagina="pImpostazioni" aria-pressed="false">Impostazioni</button>
       <button type="button" class="scheda-btn solo-admin" data-pagina="pAdmin" aria-pressed="false">Admin</button>
     </nav>
     <div id="pCodici">
@@ -304,25 +304,33 @@ details.scheda[open] > summary { margin-bottom: 14px; }
         <ul id="lLog" class="elenco"></ul>
       </section>
 
-      <details class="scheda" id="sNotifiche">
-        <summary>Notifiche su questo dispositivo <span id="nStato" class="stato spento">…</span></summary>
-        <p class="nota" id="nInfo">Ricevi un avviso sul telefono quando qualcuno entra, anche col sito chiuso.</p>
-        <label>Avvisami di
-          <select id="nModo">
-            <option value="tutte">tutti gli accessi</option>
-            <option value="negati">solo gli accessi negati</option>
-          </select></label>
-        <p class="errore" id="eNotifiche" role="alert"></p>
-        <div class="azioni">
-          <button id="nAttiva" class="btn piccolo primario" type="button">Attiva le notifiche</button>
-          <button id="nProva" class="btn piccolo" type="button" hidden>Prova</button>
-          <button id="nDisattiva" class="btn piccolo pericolo" type="button" hidden>Disattiva</button>
-        </div>
-      </details>
     </div>
 
-    <div id="pImpostazioni" class="solo-admin" hidden>
-      <section class="scheda" id="sOrologio">
+    <div id="pImpostazioni" hidden>
+      <section class="scheda" id="sNotificheImp">
+        <div class="testa">
+          <h2>Notifiche su questo dispositivo</h2>
+          <span id="iStato" class="stato spento">…</span>
+        </div>
+        <p class="nota" id="iInfo">Avvisi sul telefono quando qualcuno entra, anche col sito chiuso.</p>
+        <fieldset id="nScelte" style="margin-top:0">
+          <legend>Avvisami di</legend>
+          <div style="display:grid;gap:10px">
+            <label class="spunta solo-admin"><input type="checkbox" value="tutte"> <span>Tutti gli accessi</span></label>
+            <label class="spunta"><input type="checkbox" value="propri"> <span>I miei accessi <small>(le persone create da me)</small></span></label>
+            <label class="spunta"><input type="checkbox" value="negati"> <span>Accessi falliti <small>(PIN o tessera non validi)</small></span></label>
+            <label class="spunta solo-admin"><input type="checkbox" value="sito"> <span>Accessi al sito <small>(pagina e pannello admin, anche falliti)</small></span></label>
+          </div>
+        </fieldset>
+        <p class="errore" id="iErrore" role="alert"></p>
+        <div class="azioni">
+          <button id="iAttiva" class="btn piccolo primario" type="button">Chiedi accesso alle notifiche</button>
+          <button id="iProva" class="btn piccolo" type="button">Prova notifiche</button>
+          <button id="iDisattiva" class="btn piccolo pericolo" type="button" hidden>Disattiva</button>
+        </div>
+      </section>
+
+      <section class="scheda solo-admin" id="sOrologio">
         <div class="testa">
           <h2>Orologio</h2>
           <button id="oAggiorna" class="btn piccolo" type="button">Rileggi</button>
@@ -331,20 +339,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
         <div id="oRighe"></div>
       </section>
 
-      <section class="scheda" id="sNotificheImp">
-        <div class="testa">
-          <h2>Notifiche</h2>
-          <span id="iStato" class="stato spento">…</span>
-        </div>
-        <p class="nota" id="iInfo">Avvisi sul telefono quando qualcuno entra, anche col sito chiuso.</p>
-        <p class="errore" id="iErrore" role="alert"></p>
-        <div class="azioni">
-          <button id="iAttiva" class="btn piccolo primario" type="button">Chiedi accesso alle notifiche</button>
-          <button id="iProva" class="btn piccolo" type="button">Prova notifiche</button>
-        </div>
-      </section>
-
-      <section class="scheda">
+      <section class="scheda solo-admin">
         <div class="testa">
           <h2>Accesso da fuori (tunnel)</h2>
           <span id="tStato" class="stato spento">…</span>
@@ -363,7 +358,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
         </form>
       </section>
 
-      <section class="scheda">
+      <section class="scheda solo-admin">
         <h2>Password</h2>
         <p class="nota">La password di accesso (utente admin) di ciascun dispositivo.</p>
         <form class="fPassword" data-dev="placca" novalidate>
@@ -1405,11 +1400,11 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     ['pCodici', 'pLog', 'pImpostazioni', 'pAdmin'].forEach((p) => { $('#' + p).hidden = p !== id; });
     document.querySelectorAll('.scheda-btn').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.pagina === id)));
     if (id === 'pImpostazioni') {
-      prova(() => tunnel('stato')); prova(caricaOrologio);
+      if (S.ruolo !== 'user') { prova(() => tunnel('stato')); prova(caricaOrologio); }
       caricaNotifiche().catch((e) => erroreNotifiche(e.message));
     }
     if (id === 'pAdmin') caricaAdmin();
-    if (id === 'pLog') { prova(caricaLog); caricaNotifiche().catch((e) => erroreNotifiche(e.message)); }
+    if (id === 'pLog') { prova(caricaLog); }
   }
   // ---------- registro entrate (Log) ----------
   // la placca salva ogni apertura in /data/unlock.xml: il server lo legge e lo rimanda come elenco
@@ -1472,18 +1467,31 @@ details.scheda[open] > summary { margin-bottom: 14px; }
   }
   function iPhone() { return /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); }
   function appInstallata() { return matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; }
-  // la stessa situazione e' mostrata in Accessi e in Impostazioni › Notifiche
   function disegnaNotifiche(stato, testo, attive, possibile) {
-    for (const id of ['#nStato', '#iStato']) {
-      const st = $(id); st.textContent = stato; st.className = 'stato ' + (attive ? 'acceso' : 'spento');
-    }
-    $('#nInfo').textContent = testo; $('#iInfo').textContent = testo;
-    $('#nAttiva').hidden = !!attive || possibile === false;
-    $('#nProva').hidden = !attive; $('#nDisattiva').hidden = !attive;
+    const st = $('#iStato'); st.textContent = stato; st.className = 'stato ' + (attive ? 'acceso' : 'spento');
+    $('#iInfo').textContent = testo;
     $('#iAttiva').disabled = possibile === false;
     $('#iAttiva').textContent = attive ? 'Rinnova accesso alle notifiche' : 'Chiedi accesso alle notifiche';
+    $('#iDisattiva').hidden = !attive;
   }
-  function erroreNotifiche(t) { $('#eNotifiche').textContent = t; $('#iErrore').textContent = t; }
+  function erroreNotifiche(t) { $('#iErrore').textContent = t; }
+  // scelte «Avvisami di»: si combinano (vale l'unione); quelle nascoste all'utente semplice non contano
+  function scelteVisibili() { return [...document.querySelectorAll('#nScelte input')].filter((c) => !(S.ruolo === 'user' && c.closest('.solo-admin'))); }
+  function modoNotifiche() { return scelteVisibili().filter((c) => c.checked).map((c) => c.value).join(','); }
+  function impostaModo(modo) {
+    const m = String(modo || '').split(',');
+    document.querySelectorAll('#nScelte input').forEach((c) => { c.checked = m.includes(c.value); });
+  }
+  function descriviModo(modo) {
+    const m = String(modo || '').split(','), parti = [];
+    if (m.includes('tutte')) parti.push('ogni accesso dalla placca');
+    else {
+      if (m.includes('propri')) parti.push(S.ruolo === 'user' ? 'i tuoi accessi' : 'gli accessi delle persone create da te');
+      if (m.includes('negati')) parti.push(S.ruolo === 'user' ? 'i tuoi accessi falliti' : 'gli accessi falliti');
+    }
+    if (m.includes('sito')) parti.push('gli accessi al sito');
+    return parti.length ? parti.join(', ').replace(/, ([^,]*)$/, ' e $1') : 'niente';
+  }
   // perche' su questo dispositivo non si puo' (o '' se si puo')
   function ostacoloNotifiche() {
     if (iPhone() && !appInstallata()) return 'Su iPhone le notifiche arrivano solo dall’app: tocca Condividi › «Aggiungi alla schermata Home», apri Citofono da lì e torna qui.';
@@ -1516,9 +1524,9 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     const info = json(await conSessione({ op: 'push_info', endpoint: NOTIFICHE.sub ? NOTIFICHE.sub.endpoint : '' }));
     NOTIFICHE.info = info;
     if (!info.disponibile) { disegnaNotifiche('non disponibili', 'Sul Raspberry manca un componente: sudo apt install python3-cryptography, poi riavvia il servizio citofono.', false, false); return; }
-    $('#nModo').value = info.modo || 'tutte';
+    impostaModo(info.modo || (S.ruolo === 'user' ? 'propri' : 'tutte'));
     const attive = !!(NOTIFICHE.sub && info.iscritto && Notification.permission === 'granted');
-    let testo = attive ? 'Riceverai un avviso quando qualcuno entra' + (info.modo === 'negati' ? ' senza riuscirci.' : '.') + ' Nelle notifiche non compaiono PIN o numeri di tessera.'
+    let testo = attive ? 'Ti avvisiamo per ' + descriviModo(info.modo) + '. Nelle notifiche non compaiono PIN, numeri di tessera o password.'
       : (Notification.permission === 'denied' ? 'Le notifiche sono bloccate per questo sito: riattivale dalle impostazioni del browser.' : 'Ricevi un avviso sul telefono quando qualcuno entra, anche col sito chiuso.');
     if (!info.placca_pass) testo += ' ⚠ Il Raspberry non ha la password della placca (Admin › Utenti della pagina): finché manca non può leggere gli accessi.';
     else if (attive && info.errore) testo += ' ⚠ ' + info.errore + '.';
@@ -1526,8 +1534,9 @@ details.scheda[open] > summary { margin-bottom: 14px; }
   }
   async function attivaNotifiche(ev) {
     erroreNotifiche('');
-    const b = ev && ev.currentTarget ? ev.currentTarget : $('#nAttiva'), etichetta = b.textContent;
+    const b = ev && ev.currentTarget ? ev.currentTarget : $('#iAttiva'), etichetta = b.textContent;
     if (b.disabled) return;
+    if (!modoNotifiche()) { erroreNotifiche('Scegli almeno una voce in «Avvisami di»'); return; }
     b.disabled = true; b.textContent = 'Attivazione… (può volerci mezzo minuto)';
     await prova(async () => {
       try {
@@ -1545,7 +1554,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
           catch (e) { throw new Error(await spiegaErrorePush(e)); }
         }
         const j = sub.toJSON();
-        await conSessione({ op: 'push_iscrivi', endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, modo: $('#nModo').value });
+        await conSessione({ op: 'push_iscrivi', endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, modo: modoNotifiche() });
         await caricaNotifiche();
       } catch (e) { erroreNotifiche(e.message || String(e)); throw e; }
       finally { b.disabled = false; if (b.textContent.startsWith('Attivazione')) b.textContent = etichetta; }
@@ -1570,11 +1579,13 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     }, 'Notifica di prova inviata: dovrebbe arrivare tra pochi secondi');
   }
   async function cambiaModoNotifiche() {
+    erroreNotifiche('');
+    if (!modoNotifiche()) { erroreNotifiche('Scegli almeno una voce: per non ricevere niente premi «Disattiva»'); return; }
     const sub = NOTIFICHE.reg && await NOTIFICHE.reg.pushManager.getSubscription();
     if (!sub || !NOTIFICHE.info || !NOTIFICHE.info.iscritto) return;
     const j = sub.toJSON();
     await prova(async () => {
-      await conSessione({ op: 'push_iscrivi', endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, modo: $('#nModo').value });
+      await conSessione({ op: 'push_iscrivi', endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, modo: modoNotifiche() });
       await caricaNotifiche();
     }, 'Preferenza salvata');
   }
@@ -2042,6 +2053,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     f.pass.value = '';
     mostra('app');
     if (location.hash === '#accessi' && !S.bootstrap) mostraPagina('pLog');
+    if (location.hash === '#admin' && !S.bootstrap && S.ruolo !== 'user') mostraPagina('pAdmin');
     if (S.bootstrap) { mostraPagina('pAdmin'); avviso('Imposta la password della placca e crea gli utenti nella scheda Admin', 'ok'); }
   }
   function esci() {
@@ -2125,12 +2137,10 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     $('#asFalliti').addEventListener('change', disegnaAccessiSito);
     $('#asSvuota').addEventListener('click', svuotaAccessiSito);
     $('#oAggiorna').addEventListener('click', () => prova(caricaOrologio));
-    $('#nAttiva').addEventListener('click', attivaNotifiche);
-    $('#nDisattiva').addEventListener('click', disattivaNotifiche);
-    $('#nProva').addEventListener('click', provaNotifiche);
     $('#iAttiva').addEventListener('click', attivaNotifiche);
+    $('#iDisattiva').addEventListener('click', disattivaNotifiche);
     $('#iProva').addEventListener('click', provaNotifiche);
-    $('#nModo').addEventListener('change', cambiaModoNotifiche);
+    $('#nScelte').addEventListener('change', cambiaModoNotifiche);
     $('#bOra').addEventListener('click', () => { if (S.ruolo !== 'user') mostraPagina('pImpostazioni'); });
     $('#fFisso').addEventListener('submit', salvaFisso);
     $('#fFisso').addEventListener('input', aggiornaFisso);
@@ -2161,7 +2171,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
       try {
         await occupato(async () => { await accedi(); await chiStato(); if (!S.bootstrap) await caricaTutto(); });
         if (!S.bootstrap) caricaOrologio().catch(() => {});
-        mostra('app'); if (S.bootstrap) mostraPagina('pAdmin'); else if (location.hash === '#accessi') mostraPagina('pLog');
+        mostra('app'); if (S.bootstrap) mostraPagina('pAdmin'); else if (location.hash === '#accessi') mostraPagina('pLog'); else if (location.hash === '#admin' && S.ruolo !== 'user') mostraPagina('pAdmin');
         return;
       } catch (e) { S.pass = ''; $('#eAccesso').textContent = e.message; }
     }

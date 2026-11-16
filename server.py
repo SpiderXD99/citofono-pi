@@ -706,6 +706,23 @@ def _salva_json(chiave, dati):
         json.dump(dati, f)
 
 
+# Cosa notificare a un'iscrizione (si possono combinare, vale l'unione):
+#   tutte  = ogni entrata dalla placca            propri = le entrate delle persone dell'utente
+#   negati = le entrate rifiutate (PIN/tessera)    sito   = tentativi di accesso al sito (solo gestori)
+# Per l'utente semplice tutto e' comunque ristretto alle sue entrate: «tutte» vale «propri».
+MODI_PUSH = ('tutte', 'propri', 'negati', 'sito')
+
+
+def modi_iscrizione(i):
+    modi = {m for m in str(i.get('modo', 'tutte')).split(',') if m in MODI_PUSH}
+    if i.get('ruolo') == 'user':
+        modi.discard('sito')
+        if 'tutte' in modi:
+            modi.discard('tutte')
+            modi.add('propri')
+    return modi
+
+
 def iscrizioni():
     v = _leggi_json('PUSH', [])
     return v if isinstance(v, list) else []
@@ -721,8 +738,10 @@ def iscrivi(utente, ruolo, endpoint, p256dh, auth, modo):
             raise ValueError
     except ValueError:
         raise Errore(400, 'chiavi della notifica non valide')
-    if modo not in ('tutte', 'negati'):
-        raise Errore(400, 'modo non valido')
+    modi = modi_iscrizione({'modo': modo, 'ruolo': ruolo})
+    if not modi or any(m not in MODI_PUSH for m in str(modo).split(',')):
+        raise Errore(400, 'scegli almeno un tipo di notifica')
+    modo = ','.join(m for m in MODI_PUSH if m in modi)
     with _PUSH_LOCK:
         lista = [i for i in iscrizioni() if i.get('endpoint') != endpoint]
         if not lista:                         # primo dispositivo: si riparte dal registro di adesso
@@ -772,16 +791,25 @@ def testo_notifica(r):
 def _destinatari(entrate, sid):
     """Per ogni iscrizione, le entrate che le interessano (utente semplice: solo le sue)."""
     ids_cache = {}
+
+    def mia(i, r):
+        u = i.get('user', '')
+        if u not in ids_cache:
+            ids_cache[u] = identificatori_utente(u, sid)
+        return bool({str(r.get('name', '')).lower(), str(r.get('number', '')).lower()} & ids_cache[u])
+
     for i in iscrizioni():
-        scelte = entrate
-        if i.get('ruolo') == 'user':
-            u = i.get('user', '')
-            if u not in ids_cache:
-                ids_cache[u] = identificatori_utente(u, sid)
-            ids = ids_cache[u]
-            scelte = [r for r in scelte if {str(r.get('name', '')).lower(), str(r.get('number', '')).lower()} & ids]
-        if i.get('modo') == 'negati':
-            scelte = [r for r in scelte if str(r.get('status')) == '-1']
+        modi = modi_iscrizione(i)
+        utente = i.get('ruolo') == 'user'
+        scelte = []
+        for r in entrate:
+            negata = str(r.get('status')) == '-1'
+            if utente:                            # solo le sue: tutte, o solo quelle negate
+                ok = mia(i, r) and ('propri' in modi or (negata and 'negati' in modi))
+            else:
+                ok = 'tutte' in modi or (negata and 'negati' in modi) or ('propri' in modi and mia(i, r))
+            if ok:
+                scelte.append(r)
         if scelte:
             yield i, scelte
 
@@ -830,9 +858,83 @@ def giro_sorveglianza():
     return mandate
 
 
+_SITO_CODA = []                               # accessi al sito in attesa di notifica
+_SITO_LOCK = threading.Lock()
+DOVE_TESTO = {'pagina': 'pagina', 'admin': 'pannello admin', 'aggiorna': 'aggiornamento automatico'}
+
+
+def accoda_accesso_sito(voce):
+    if voce['dove'] == 'aggiorna' and voce['esito'] == 'ok':
+        return                                   # l'aggiornamento notturno non e' una notizia
+    with _SITO_LOCK:
+        if len(_SITO_CODA) < 500:
+            _SITO_CODA.append({k: voce[k] for k in ('t', 'dove', 'ip', 'user', 'esito')})
+
+
+def testi_sito(voci):
+    """Al massimo due notifiche per giro: una per gli ingressi, una per i tentativi falliti.
+    Mai la password scritta: la notifica passa dal servizio push e si legge a schermo bloccato."""
+    def ora(v):
+        return time.strftime('%H:%M', time.localtime(v['t']))
+
+    def chi(v):
+        return ('«%s»' % v['user']) if v['user'] else 'nessun utente'
+    msg = []
+    entrati = [v for v in voci if v['esito'] in ('ok', 'placca')]
+    falliti = [v for v in voci if v['esito'] not in ('ok', 'placca')]
+    if len(entrati) == 1:
+        v = entrati[0]
+        msg.append({'title': '🔑 ' + (v['user'] or 'Qualcuno') + ' è entrato nel sito',
+                    'body': ' · '.join((DOVE_TESTO.get(v['dove'], v['dove']), 'IP ' + v['ip'], ora(v))),
+                    'tag': 'sito-ok-%d' % v['t'], 'url': '/#admin'})
+    elif entrati:
+        nomi = sorted({v['user'] or '?' for v in entrati})
+        msg.append({'title': '🔑 %d accessi al sito' % len(entrati), 'body': ', '.join(nomi)[:120] + ' · ' + ora(entrati[-1]),
+                    'tag': 'sito-ok-%d' % entrati[-1]['t'], 'url': '/#admin'})
+    if len(falliti) == 1:
+        v = falliti[0]
+        cosa = {'bloccato': 'bloccato', 'rifiutato': 'rifiutato'}.get(v['esito'], 'fallito')
+        msg.append({'title': '⚠️ Accesso al sito ' + cosa,
+                    'body': ' · '.join(('utente ' + chi(v), 'IP ' + v['ip'], DOVE_TESTO.get(v['dove'], v['dove']), ora(v))),
+                    'tag': 'sito-ko-%d' % v['t'], 'url': '/#admin'})
+    elif falliti:
+        v = falliti[-1]
+        ip = len({x['ip'] for x in falliti})
+        msg.append({'title': '⚠️ %d tentativi falliti sul sito' % len(falliti),
+                    'body': 'ultimo: utente %s da IP %s · %s%s' % (chi(v), v['ip'], ora(v), (' · da %d indirizzi' % ip) if ip > 1 else ''),
+                    'tag': 'sito-ko-%d' % v['t'], 'url': '/#admin'})
+    return msg
+
+
+def notifiche_sito():
+    with _SITO_LOCK:
+        coda = list(_SITO_CODA)
+        del _SITO_CODA[:]
+    if not coda or not CRITTO:
+        return 0
+    mandate = 0
+    for i in iscrizioni():
+        if 'sito' not in modi_iscrizione(i):
+            continue
+        # il proprio ingresso non si notifica (lo si e' appena fatto)
+        voci = [v for v in coda if not (v['esito'] == 'ok' and v['user'] == i.get('user'))]
+        for m in testi_sito(voci):
+            st = invia_push(i, m)
+            if st in (404, 410):
+                togli_iscrizione(i['endpoint'])
+                break
+            if 200 <= st < 300:
+                mandate += 1
+    return mandate
+
+
 def sorveglia():
     while True:
         time.sleep(POLL_PUSH)
+        try:
+            notifiche_sito()
+        except Exception as e:
+            _SORVEGLIA['errore'] = 'errore interno: %r' % (e,)
         if time.time() < _SORVEGLIA['pausa']:
             continue
         try:
@@ -1103,6 +1205,7 @@ def registra_accesso(dove, ip, utente, esito, password=None):
         lista = [v for v in lista if isinstance(v, dict) and v.get('t', 0) >= limite]
         lista.append(voce)
         lista = lista[-MAX_ACCESSI:]
+        accoda_accesso_sito(voce)
         try:
             fd = os.open(CONF['ACCESSI'], os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
             with os.fdopen(fd, 'w', encoding='utf-8') as f:
@@ -1479,12 +1582,14 @@ def gestisci(corpo, dal_tunnel, cookie, cookie_pin, ip):
         ep = urllib.parse.unquote_plus(campi.get('endpoint', ''))
         if op == 'push_info':
             mio = next((i for i in iscrizioni() if ep and i.get('endpoint') == ep), None)
+            modo = ','.join(m for m in MODI_PUSH if m in modi_iscrizione(mio)) if mio else (
+                'propri' if chi_ruolo == 'user' else 'tutte')
             r = {'disponibile': CRITTO, 'chiave': vapid_pubblica() if CRITTO else '',
-                 'iscritto': bool(mio), 'modo': mio.get('modo', 'tutte') if mio else 'tutte',
+                 'iscritto': bool(mio), 'modo': modo, 'gestore': chi_ruolo != 'user',
                  'placca_pass': bool(leggi_placca_hash()), 'errore': _SORVEGLIA['errore']}
             return js, json.dumps(r).encode('utf-8'), None
         if op == 'push_iscrivi':
-            iscrivi(chi, chi_ruolo, ep, campi.get('p256dh', ''), campi.get('auth', ''), campi.get('modo', 'tutte'))
+            iscrivi(chi, chi_ruolo, ep, campi.get('p256dh', ''), campi.get('auth', ''), urllib.parse.unquote_plus(campi.get('modo', 'tutte')))
             return js, b'{"ok":1}', None
         if op == 'push_cancella':
             togli_iscrizione(ep, None if chi_ruolo == 'admin' else chi)
