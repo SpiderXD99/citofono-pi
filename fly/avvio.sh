@@ -81,6 +81,7 @@ PLACCA_CRED=$D/placca.json
 PUSH=$D/push.json
 PUSH_STATO=$D/push_stato.json
 VAPID=$D/vapid.pem
+ACCESSI=$D/accessi.json
 PROPRIETA=$D/proprieta.json
 PONTE_CONF=$D/ponte.conf
 TUNNEL_ENV=$D/tunnel.env

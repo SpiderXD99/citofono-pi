@@ -487,6 +487,19 @@ details.scheda[open] > summary { margin-bottom: 14px; }
         </form>
       </details>
 
+      <details class="scheda" id="sAccessiSito">
+        <summary>Accessi al sito <span id="asStato" class="stato spento">…</span></summary>
+        <p class="nota">Chi è entrato nella pagina o nel pannello, da quale indirizzo e com'è andata.
+          Per i tentativi falliti c'è anche la password scritta. Restano solo sul Raspberry (ultimi 300, al massimo 90 giorni).</p>
+        <div class="azioni">
+          <label class="spunta" style="margin:0"><input type="checkbox" id="asFalliti"> solo falliti</label>
+          <button id="asMostra" class="btn piccolo" type="button" aria-pressed="false">Mostra password</button>
+          <button id="asAggiorna" class="btn piccolo" type="button">Aggiorna</button>
+          <button id="asSvuota" class="btn piccolo pericolo" type="button">Svuota</button>
+        </div>
+        <ul id="asLista" class="elenco"></ul>
+      </details>
+
       <details class="scheda">
         <summary>Aggiornamento</summary>
         <p class="nota" id="aggNota">Scarica l'ultima versione e riavvia. Il Pi lo fa anche da solo ogni notte.</p>
@@ -1789,6 +1802,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     } catch (e) { avviso(e.message, 'err'); }
     if (!S.fly) caricaReteAdmin();
     caricaUtentiAdmin();
+    caricaAccessiSito();
   }
   function disegnaCollegamento(c) {
     const st = $('#cStato'), info = $('#cInfo');
@@ -1814,6 +1828,55 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     info.textContent = !p.pass_impostata ? 'imposta le credenziali del monitor qui sotto'
       : (p.attivo ? 'la porta del relay risponde' : 'premi «Verifica / Avvia relay»');
   }
+  // ---------- registro degli accessi al sito ----------
+  const ACCESSI = { lista: [], mostra: false };
+  const DOVE_ACCESSO = { pagina: 'pagina', admin: 'pannello admin', aggiorna: 'aggiornamento automatico' };
+  const ESITO_ACCESSO = { ok: ['entrato', 'acceso'], fallito: ['fallito', 'allarme'], bloccato: ['bloccato', 'allarme'],
+    rifiutato: ['rifiutato', 'allarme'], placca: ['password placca', 'attesa'] };
+  function dispositivo(ua) {
+    ua = ua || '';
+    const so = /iPhone|iPad/.test(ua) ? 'iPhone/iPad' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows'
+      : /Mac OS X|Macintosh/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : '';
+    const br = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /Firefox\//.test(ua) ? 'Firefox'
+      : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : /curl|python|wget|Go-http/i.test(ua) ? 'programma' : '';
+    return [br, so].filter(Boolean).join(' su ') || (ua ? ua.slice(0, 40) : '');
+  }
+  function disegnaAccessiSito() {
+    const ul = $('#asLista'); ul.textContent = '';
+    const b = $('#asMostra');
+    b.textContent = ACCESSI.mostra ? 'Nascondi password' : 'Mostra password';
+    b.setAttribute('aria-pressed', String(ACCESSI.mostra));
+    const falliti = ACCESSI.lista.filter((v) => v.esito !== 'ok').length;
+    const st = $('#asStato');
+    st.textContent = falliti ? falliti + ' falliti' : (ACCESSI.lista.length ? 'nessun fallito' : 'vuoto');
+    st.className = 'stato ' + (falliti ? 'allarme' : 'acceso');
+    const voci = $('#asFalliti').checked ? ACCESSI.lista.filter((v) => v.esito !== 'ok') : ACCESSI.lista;
+    if (!voci.length) { ul.append(el('li', 'vuoto', 'Nessun accesso registrato.')); return; }
+    for (const v of voci.slice(0, 150)) {
+      const li = el('li', 'voce'), r1 = el('div', 'riga');
+      const e = ESITO_ACCESSO[v.esito] || [v.esito, 'spento'];
+      r1.append(el('strong', 'nome', v.user || (v.dove === 'aggiorna' ? 'aggiornamento' : '(nessun utente)')), el('span', 'stato ' + e[1], e[0]));
+      const d = new Date((v.t || 0) * 1000);
+      const dett = [data(isoGiorno(d), true) + ' ' + due(d.getHours()) + ':' + due(d.getMinutes()),
+        'IP ' + v.ip + (v.via ? ' (arrivato da ' + v.via + ')' : ''), DOVE_ACCESSO[v.dove] || v.dove];
+      const disp = dispositivo(v.ua); if (disp) dett.push(disp);
+      if (v.pass !== undefined) dett.push('password: ' + (ACCESSI.mostra ? (v.pass === '' ? '(vuota)' : v.pass) : '•'.repeat(Math.min(12, Math.max(4, v.pass.length)))));
+      const r2 = el('div', 'dettagli', dett.join(' · '));
+      if (v.ua) r2.title = v.ua;
+      li.append(r1, r2);
+      ul.append(li);
+    }
+  }
+  async function caricaAccessiSito() {
+    try { ACCESSI.lista = json(await invia({ op: 'admin_accessi' })).accessi || []; }
+    catch (e) { ACCESSI.lista = []; avviso(e.message, 'err'); }
+    disegnaAccessiSito();
+  }
+  async function svuotaAccessiSito() {
+    if (!confirm('Cancellare tutto il registro degli accessi al sito?')) return;
+    await prova(async () => { await invia({ op: 'admin_accessi_svuota' }); await caricaAccessiSito(); }, 'Registro svuotato');
+  }
+
   async function caricaReteAdmin() {
     try { disegnaReteAdmin(json(await invia({ op: 'admin_rete_state' }))); } catch (e) { disegnaReteAdmin(null); }
   }
@@ -1985,6 +2048,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     fermaLettura();
     dimenticaCredenziali();
     Object.assign(S, { hash: '', sid: '', persone: [], fissi: [], card: null, mostra: false, log: null });
+    ACCESSI.lista = []; ACCESSI.mostra = false; $('#asLista').textContent = '';
     $('#sMaster').hidden = true;
     $('#lPersone').textContent = '';
     $('#lFissi').textContent = '';
@@ -2056,6 +2120,10 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     $('#cVerifica').addEventListener('click', caricaAdmin);
     $('#bLog').addEventListener('click', () => prova(caricaLog));
     $('#bLogOn').addEventListener('click', attivaLog);
+    $('#asAggiorna').addEventListener('click', () => prova(caricaAccessiSito));
+    $('#asMostra').addEventListener('click', () => { ACCESSI.mostra = !ACCESSI.mostra; disegnaAccessiSito(); });
+    $('#asFalliti').addEventListener('change', disegnaAccessiSito);
+    $('#asSvuota').addEventListener('click', svuotaAccessiSito);
     $('#oAggiorna').addEventListener('click', () => prova(caricaOrologio));
     $('#nAttiva').addEventListener('click', attivaNotifiche);
     $('#nDisattiva').addEventListener('click', disattivaNotifiche);

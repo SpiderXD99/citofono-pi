@@ -97,6 +97,16 @@ contengono PIN né numeri di tessera; l'utente semplice riceve solo le proprie e
 - Serve `python3-cryptography` (lo installa `installa.sh`; su un Pi già installato:
   `sudo apt install python3-cryptography` e riavvio del servizio `citofono`).
 
+## Registro degli accessi al sito
+
+In **Admin › Accessi al sito** ci sono gli ultimi tentativi di entrare nella pagina, nel
+pannello admin e nell'aggiornamento automatico: data e ora, IP (quello vero del visitatore
+anche dal tunnel), dispositivo, esito. Per i tentativi **falliti** c'è anche la password
+scritta, nascosta finché non premi «Mostra password». Attenzione: spesso è la password giusta
+con un errore di battitura, o quella di un altro servizio. Il file
+(`/etc/citofono/accessi.json`, 600) resta solo sul Pi: ultime 300 voci, massimo 90 giorni,
+e si può svuotare dal pannello.
+
 ## Aggiornamenti
 
 Il Pi resta aggiornato da questo repo, senza doverci accedere:

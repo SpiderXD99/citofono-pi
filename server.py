@@ -65,6 +65,7 @@ PREDEFINITI = {
     'PUSH': '/etc/citofono/push.json',              # dispositivi iscritti alle notifiche
     'PUSH_STATO': '/etc/citofono/push_stato.json',  # entrate gia' notificate
     'VAPID': '/etc/citofono/vapid.pem',             # chiave privata per firmare le notifiche
+    'ACCESSI': '/etc/citofono/accessi.json',        # registro degli accessi al sito (Admin)
     'PROPRIETA': '/etc/citofono/proprieta.json',
     # 'pi' = Raspberry in casa (relay, Wi-Fi, tunnel con systemd); 'fly' = app su Fly.io:
     # la placca arriva da xfrpc sul monitor attraverso frps (PLACCA=127.0.0.1:17080)
@@ -1072,6 +1073,62 @@ def sessione_ok(cookie):
     return False
 
 
+# ---------- registro degli accessi al sito (scheda Admin) ----------
+# Ogni tentativo di accesso: quando, da dove, con quale utente e com'e' andato. Per i
+# tentativi FALLITI si conserva anche la password scritta (richiesto dal gestore, per
+# riconoscere chi prova a indovinarla): il file e' 600 e resta solo sul Pi, e si
+# tengono al massimo MAX_ACCESSI voci e GIORNI_ACCESSI giorni.
+MAX_ACCESSI, GIORNI_ACCESSI = 300, 90
+_ACCESSI_LOCK = threading.Lock()
+_RICHIESTA = threading.local()              # user agent e indirizzo reale della richiesta in corso
+
+
+def registra_accesso(dove, ip, utente, esito, password=None):
+    voce = {'t': int(time.time()), 'dove': dove, 'ip': str(ip)[:64], 'user': str(utente or '')[:64],
+            'esito': esito, 'ua': str(getattr(_RICHIESTA, 'ua', '') or '')[:160]}
+    peer = str(getattr(_RICHIESTA, 'peer', '') or '')
+    if peer and peer != voce['ip'] and not peer.startswith('127.') and peer != '::1':
+        voce['via'] = peer[:64]                  # Cf-Connecting-Ip non arrivato dal tunnel: sospetto
+    if esito != 'ok' and password is not None:
+        voce['pass'] = str(password)[:128]
+    limite = time.time() - GIORNI_ACCESSI * 86400
+    with _ACCESSI_LOCK:
+        try:
+            with open(CONF['ACCESSI'], encoding='utf-8') as f:
+                lista = json.load(f)
+            if not isinstance(lista, list):
+                lista = []
+        except (OSError, ValueError):
+            lista = []
+        lista = [v for v in lista if isinstance(v, dict) and v.get('t', 0) >= limite]
+        lista.append(voce)
+        lista = lista[-MAX_ACCESSI:]
+        try:
+            fd = os.open(CONF['ACCESSI'], os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                json.dump(lista, f)
+        except OSError:
+            pass                                 # il registro non deve mai impedire l'accesso
+
+
+def leggi_accessi():
+    with _ACCESSI_LOCK:
+        try:
+            with open(CONF['ACCESSI'], encoding='utf-8') as f:
+                lista = json.load(f)
+        except (OSError, ValueError):
+            return []
+    return list(reversed(lista)) if isinstance(lista, list) else []
+
+
+def svuota_accessi():
+    with _ACCESSI_LOCK:
+        try:
+            os.remove(CONF['ACCESSI'])
+        except OSError:
+            pass
+
+
 def bloccato(ip):
     v = TENTATIVI.get(ip)
     return bool(v and v[1] > time.time())
@@ -1117,12 +1174,14 @@ def gestisci(corpo, dal_tunnel, cookie, cookie_pin, ip):
 
     # --- admin: login e operazioni sul Pi ---
     if op == 'admin_login':
-        if CONF['ADMIN_LAN_ONLY'] == '1' and dal_tunnel:
-            raise Errore(403, 'il pannello admin si apre solo da casa')
-        if bloccato(ip):
-            raise Errore(429, 'troppi tentativi: riprova tra qualche minuto')
         u = urllib.parse.unquote_plus(campi.get('admin_user', ''))
         p = urllib.parse.unquote_plus(campi.get('admin_pass', ''))
+        if CONF['ADMIN_LAN_ONLY'] == '1' and dal_tunnel:
+            registra_accesso('admin', ip, u, 'rifiutato', p)
+            raise Errore(403, 'il pannello admin si apre solo da casa')
+        if bloccato(ip):
+            registra_accesso('admin', ip, u, 'bloccato', p)
+            raise Errore(429, 'troppi tentativi: riprova tra qualche minuto')
         # /admin si apre con un account di ruolo admin; finche' non ne esiste nessuno
         # vale ancora la vecchia password del pannello (bootstrap, per non restare chiusi fuori)
         if esiste_admin():
@@ -1131,8 +1190,10 @@ def gestisci(corpo, dal_tunnel, cookie, cookie_pin, ip):
             valido = verifica_admin(u, p)
         if not valido:
             segna_fallito(ip)
+            registra_accesso('admin', ip, u, 'fallito', p)
             raise Errore(401, 'utente o password non corretti')
         TENTATIVI.pop(ip, None)
+        registra_accesso('admin', ip, u, 'ok')
         tok = nuova_sessione()
         c = 'AdminSID=%s; HttpOnly; SameSite=Strict; Path=/; Max-Age=%d' % (tok, DURATA)
         if CONF['CERT']:
@@ -1304,6 +1365,11 @@ def gestisci(corpo, dal_tunnel, cookie, cookie_pin, ip):
             return js, b'{"ok":1}', None
         elimina_utente(urllib.parse.unquote_plus(campi.get('pin_user', '')))
         return js, b'{"ok":1}', None
+    if op == 'admin_accessi':                     # registro degli accessi al sito
+        return js, json.dumps({'accessi': leggi_accessi()}).encode('utf-8'), None
+    if op == 'admin_accessi_svuota':
+        svuota_accessi()
+        return js, b'{"ok":1}', None
     if op == 'admin_orologio':                    # ora della placca = quella del telefono
         r = imposta_ora(sid, urllib.parse.unquote_plus(campi.get('ora', '')))
         return js, json.dumps(r).encode('utf-8'), None
@@ -1366,13 +1432,16 @@ def gestisci(corpo, dal_tunnel, cookie, cookie_pin, ip):
             u = urllib.parse.unquote_plus(campi.get('user', ''))
             pw = urllib.parse.unquote_plus(campi.get('pass', ''))
             if not pw:
+                registra_accesso('pagina', ip, u, 'fallito', '')
                 raise Errore(401, 'utente o password non validi')
             acc = verifica_utente(u, pw)
             boot = (not esiste_admin()) and verifica_admin(u, pw)   # primo gestore: password iniziale del pannello
             if acc or boot:
                 if bloccato(ip):
+                    registra_accesso('pagina', ip, u, 'bloccato')
                     raise Errore(429, 'troppi tentativi: riprova tra qualche minuto')
                 TENTATIVI.pop(ip, None)
+                registra_accesso('pagina', ip, u, 'ok')
                 pin_user = u
                 pin_ruolo = 'admin' if boot else (ruolo_utente(u) or 'user')
                 ph = leggi_placca_hash()
@@ -1380,8 +1449,10 @@ def gestisci(corpo, dal_tunnel, cookie, cookie_pin, ip):
                     raise Errore(502, 'password della placca non impostata nel pannello admin')
             elif not carica_utenti():                # nessun account: pw = password della placca
                 ph = hashlib.md5(pw.encode('utf-8')).hexdigest()
+                registra_accesso('pagina', ip, u, 'placca')   # l'esito lo decide la placca
             else:
                 segna_fallito(ip)
+                registra_accesso('pagina', ip, u, 'fallito', pw)
                 raise Errore(401, 'utente o password non validi')
         extra = None
         if pin_user:                                 # sessione della pagina / col ruolo
@@ -1520,11 +1591,15 @@ class Gestore(http.server.BaseHTTPRequestHandler):
         ip = self.headers.get('Cf-Connecting-Ip') or self.client_address[0]
         if bloccato(ip):
             return self.manda(429, 'text/plain; charset=utf-8', b'troppi tentativi: riprova tra qualche minuto\n')
-        if not autorizza_bearer(self.headers.get('Authorization', '')):
+        _RICHIESTA.ua = self.headers.get('User-Agent', ''); _RICHIESTA.peer = self.client_address[0]
+        auth = self.headers.get('Authorization', '')
+        if not autorizza_bearer(auth):
             segna_fallito(ip)
+            registra_accesso('aggiorna', ip, '', 'fallito', auth[7:] if auth.startswith('Bearer ') else auth)
             return self.manda(401, 'text/plain; charset=utf-8', b'non autorizzato\n',
                               {'WWW-Authenticate': 'Bearer'})
         TENTATIVI.pop(ip, None)
+        registra_accesso('aggiorna', ip, '', 'ok')
         try:
             aggiorna_dal_repo()
         except Errore as e:
@@ -1581,6 +1656,7 @@ class Gestore(http.server.BaseHTTPRequestHandler):
         corpo = self.rfile.read(n).decode('ascii', 'replace')
         dal_tunnel = bool(self.headers.get('Cf-Connecting-Ip'))
         ip = self.headers.get('Cf-Connecting-Ip') or self.client_address[0]
+        _RICHIESTA.ua = self.headers.get('User-Agent', ''); _RICHIESTA.peer = self.client_address[0]
         try:
             ca, cp = self._cookie()
             tipo, uscita, extra = gestisci(corpo, dal_tunnel, ca, cp, ip)
