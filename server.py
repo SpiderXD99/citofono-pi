@@ -234,7 +234,7 @@ def verifica_admin(utente, password):
     if not a:
         return False
     h = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), bytes.fromhex(a['salt']), a.get('iter', ITER))
-    return hmac.compare_digest(utente, a['user']) and hmac.compare_digest(h.hex(), a['hash'])
+    return hmac.compare_digest(utente.encode('utf-8'), str(a['user']).encode('utf-8')) and hmac.compare_digest(h.hex(), a['hash'])
 
 
 # ---------- utenti della pagina PIN (account separati da placca/monitor) ----------
@@ -280,7 +280,7 @@ def elimina_utente(utente):
 
 def verifica_utente(utente, password):
     for u in carica_utenti():
-        if hmac.compare_digest(utente, u.get('user', '')):
+        if hmac.compare_digest(utente.encode('utf-8'), str(u.get('user', '')).encode('utf-8')):
             h = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'),
                                     bytes.fromhex(u['salt']), u.get('iter', ITER))
             return hmac.compare_digest(h.hex(), u['hash'])

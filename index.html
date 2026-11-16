@@ -148,6 +148,11 @@ legend { padding: 0; font-size: 14px; color: var(--muted); margin-bottom: 8px; }
 .riga { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .nome { font-size: 16px; overflow-wrap: anywhere; }
 .dettagli { color: var(--muted); font-size: 14px; margin-top: 3px; }
+/* testo scritto in un login: spazi e caratteri invisibili diventano un punto semitrasparente */
+.scritto { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--text);
+  background: color-mix(in srgb, var(--muted) 14%, transparent); border-radius: 4px; padding: 0 4px; white-space: pre-wrap; }
+.invis { opacity: .35; font-weight: 700; }
+.invis.strano { color: var(--danger); opacity: .6; }
 .codice { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-weight: 700;
   color: var(--text); letter-spacing: .06em; }
 .azioni { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
@@ -1852,6 +1857,23 @@ details.scheda[open] > summary { margin-bottom: 14px; }
       : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : /curl|python|wget|Go-http/i.test(ua) ? 'programma' : '';
     return [br, so].filter(Boolean).join(' su ') || (ua ? ua.slice(0, 40) : '');
   }
+  // spazi, tab, a capo e caratteri invisibili (zero-width, BOM, spazi speciali, controllo) resi visibili
+  const INVISIBILI = /[\s\u00AD\u034F\u061C\u115F\u1160\u17B4\u17B5\u180E\u200B-\u200F\u202A-\u202E\u2060-\u206F\u3164\uFEFF\uFFA0\u0000-\u001F\u007F-\u009F]/u;
+  function scritto(testo) {
+    const box = el('span', 'scritto');
+    let pezzo = '';
+    for (const ch of String(testo)) {
+      if (!INVISIBILI.test(ch)) { pezzo += ch; continue; }
+      if (pezzo) { box.append(pezzo); pezzo = ''; }
+      const cod = 'U+' + ch.codePointAt(0).toString(16).toUpperCase().padStart(4, '0');
+      const nome = ch === ' ' ? 'spazio' : ch === '\t' ? 'tabulazione' : ch === '\n' || ch === '\r' ? 'a capo' : 'carattere invisibile ' + cod;
+      const m = el('span', 'invis' + (ch === ' ' ? '' : ' strano'), '·');
+      m.title = nome; m.setAttribute('aria-label', nome);
+      box.append(m);
+    }
+    if (pezzo) box.append(pezzo);
+    return box;
+  }
   function disegnaAccessiSito() {
     const ul = $('#asLista'); ul.textContent = '';
     const b = $('#asMostra');
@@ -1866,13 +1888,21 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     for (const v of voci.slice(0, 150)) {
       const li = el('li', 'voce'), r1 = el('div', 'riga');
       const e = ESITO_ACCESSO[v.esito] || [v.esito, 'spento'];
-      r1.append(el('strong', 'nome', v.user || (v.dove === 'aggiorna' ? 'aggiornamento' : '(nessun utente)')), el('span', 'stato ' + e[1], e[0]));
+      const nome = el('strong', 'nome');
+      if (v.user && INVISIBILI.test(v.user)) nome.append(scritto(v.user));
+      else nome.textContent = v.user || (v.dove === 'aggiorna' ? 'aggiornamento' : '(nessun utente)');
+      r1.append(nome, el('span', 'stato ' + e[1], e[0]));
       const d = new Date((v.t || 0) * 1000);
       const dett = [data(isoGiorno(d), true) + ' ' + due(d.getHours()) + ':' + due(d.getMinutes()),
         'IP ' + v.ip + (v.via ? ' (arrivato da ' + v.via + ')' : ''), DOVE_ACCESSO[v.dove] || v.dove];
       const disp = dispositivo(v.ua); if (disp) dett.push(disp);
-      if (v.pass !== undefined) dett.push('password: ' + (ACCESSI.mostra ? (v.pass === '' ? '(vuota)' : v.pass) : '•'.repeat(Math.min(12, Math.max(4, v.pass.length)))));
       const r2 = el('div', 'dettagli', dett.join(' · '));
+      if (v.pass !== undefined) {
+        r2.append(' · password: ');
+        if (!ACCESSI.mostra) r2.append('•'.repeat(Math.min(12, Math.max(4, v.pass.length))));
+        else if (v.pass === '') r2.append('(vuota)');
+        else r2.append(scritto(v.pass));
+      }
       if (v.ua) r2.title = v.ua;
       li.append(r1, r2);
       ul.append(li);
