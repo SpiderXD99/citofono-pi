@@ -15,6 +15,7 @@ Solo libreria standard di Python 3. Avvio: server.py --conf /etc/citofono/citofo
 """
 
 import base64
+import unicodedata
 import hashlib
 import hmac
 import html
@@ -222,19 +223,31 @@ def salva_ponte(agg):
 
 def salva_admin(utente, password):
     salt = secrets.token_bytes(16)
-    h = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, ITER)
+    h = hashlib.pbkdf2_hmac('sha256', unicodedata.normalize('NFC', password).encode('utf-8'), salt, ITER)
     dati = {'user': utente, 'iter': ITER, 'salt': salt.hex(), 'hash': h.hex()}
     fd = os.open(CONF['ADMIN'], os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, 'w', encoding='utf-8') as f:
         json.dump(dati, f)
 
 
+def _varianti(password):
+    """La password come scritta e in forma NFC: iPhone e PC possono codificare le lettere
+    accentate in due modi (e + accento combinante oppure e accentata unica)."""
+    v = [password]
+    n = unicodedata.normalize('NFC', password)
+    if n != password:
+        v.append(n)
+    return v
+
+
 def verifica_admin(utente, password):
     a = carica_admin()
     if not a:
         return False
-    h = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), bytes.fromhex(a['salt']), a.get('iter', ITER))
-    return hmac.compare_digest(utente.encode('utf-8'), str(a['user']).encode('utf-8')) and hmac.compare_digest(h.hex(), a['hash'])
+    if not hmac.compare_digest(utente.encode('utf-8'), str(a['user']).encode('utf-8')):
+        return False
+    return any(hmac.compare_digest(hashlib.pbkdf2_hmac('sha256', p.encode('utf-8'), bytes.fromhex(a['salt']),
+                                                       a.get('iter', ITER)).hex(), a['hash']) for p in _varianti(password))
 
 
 # ---------- utenti della pagina PIN (account separati da placca/monitor) ----------
@@ -255,6 +268,7 @@ def salva_utenti(lista):
 
 def aggiungi_utente(utente, password, ruolo='user'):
     salt = secrets.token_bytes(16)
+    password = unicodedata.normalize('NFC', password)
     h = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, ITER)
     voce = {'user': utente, 'ruolo': ruolo if ruolo in ('admin', 'user') else 'user',
             'iter': ITER, 'salt': salt.hex(), 'hash': h.hex()}
@@ -281,9 +295,9 @@ def elimina_utente(utente):
 def verifica_utente(utente, password):
     for u in carica_utenti():
         if hmac.compare_digest(utente.encode('utf-8'), str(u.get('user', '')).encode('utf-8')):
-            h = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'),
-                                    bytes.fromhex(u['salt']), u.get('iter', ITER))
-            return hmac.compare_digest(h.hex(), u['hash'])
+            return any(hmac.compare_digest(hashlib.pbkdf2_hmac('sha256', p.encode('utf-8'), bytes.fromhex(u['salt']),
+                                                               u.get('iter', ITER)).hex(), u['hash'])
+                       for p in _varianti(password))
     return False
 
 
@@ -295,7 +309,7 @@ def cambia_password_utente(utente, nuova):
             salt = secrets.token_bytes(16)
             u['iter'] = ITER
             u['salt'] = salt.hex()
-            u['hash'] = hashlib.pbkdf2_hmac('sha256', nuova.encode('utf-8'), salt, ITER).hex()
+            u['hash'] = hashlib.pbkdf2_hmac('sha256', unicodedata.normalize('NFC', nuova).encode('utf-8'), salt, ITER).hex()
             salva_utenti(lista)
             return True
     return False
@@ -1532,19 +1546,20 @@ def gestisci(corpo, dal_tunnel, cookie, cookie_pin, ip):
         if h and re.fullmatch(r'[0-9a-f]{32}', h):
             ph = h                                   # compat: vecchio flusso (md5 della placca)
         else:
-            u = urllib.parse.unquote_plus(campi.get('user', ''))
+            u_scritto = urllib.parse.unquote_plus(campi.get('user', ''))
+            u = u_scritto.strip()
             pw = urllib.parse.unquote_plus(campi.get('pass', ''))
             if not pw:
-                registra_accesso('pagina', ip, u, 'fallito', '')
+                registra_accesso('pagina', ip, u_scritto, 'fallito', '')
                 raise Errore(401, 'utente o password non validi')
             acc = verifica_utente(u, pw)
             boot = (not esiste_admin()) and verifica_admin(u, pw)   # primo gestore: password iniziale del pannello
             if acc or boot:
                 if bloccato(ip):
-                    registra_accesso('pagina', ip, u, 'bloccato')
+                    registra_accesso('pagina', ip, u_scritto, 'bloccato')
                     raise Errore(429, 'troppi tentativi: riprova tra qualche minuto')
                 TENTATIVI.pop(ip, None)
-                registra_accesso('pagina', ip, u, 'ok')
+                registra_accesso('pagina', ip, u_scritto, 'ok')
                 pin_user = u
                 pin_ruolo = 'admin' if boot else (ruolo_utente(u) or 'user')
                 ph = leggi_placca_hash()
@@ -1552,10 +1567,10 @@ def gestisci(corpo, dal_tunnel, cookie, cookie_pin, ip):
                     raise Errore(502, 'password della placca non impostata nel pannello admin')
             elif not carica_utenti():                # nessun account: pw = password della placca
                 ph = hashlib.md5(pw.encode('utf-8')).hexdigest()
-                registra_accesso('pagina', ip, u, 'placca')   # l'esito lo decide la placca
+                registra_accesso('pagina', ip, u_scritto, 'placca')   # l'esito lo decide la placca
             else:
                 segna_fallito(ip)
-                registra_accesso('pagina', ip, u, 'fallito', pw)
+                registra_accesso('pagina', ip, u_scritto, 'fallito', pw)
                 raise Errore(401, 'utente o password non validi')
         extra = None
         if pin_user:                                 # sessione della pagina / col ruolo

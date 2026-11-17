@@ -111,6 +111,7 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1p
 #uLista .riga .btn { min-height: 36px; }
 .spunta { display: flex; align-items: center; gap: 10px; color: var(--text); font-size: 15px; }
 .spunta input { width: 20px; height: 20px; margin: 0; accent-color: var(--accent); }
+input.segreto { -webkit-text-security: disc; text-security: disc; }
 .errore { color: var(--danger); font-weight: 600; min-height: 1.2em; margin: 12px 0 0; font-size: 14px; }
 
 fieldset { border: 0; padding: 0; margin: 16px 0 0; min-width: 0; }
@@ -215,7 +216,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
   <section id="vAccesso" class="scheda" hidden>
     <h2>Accesso alla placca</h2>
     <form id="fAccesso">
-      <label>Utente<input name="user" value="admin" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
+      <label>Utente<input name="user" value="admin" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required></label>
       <label>Password<input name="pass" type="password" autocomplete="current-password" required></label>
       <label class="spunta"><input type="checkbox" name="ricorda" checked> Ricorda su questo dispositivo</label>
       <p class="errore" id="eAccesso" role="alert"></p>
@@ -261,7 +262,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
         <label class="spunta"><input type="checkbox" name="attiva"> Tessera master attiva</label>
         <div id="mRiga">
           <div class="riga-occhio">
-            <input name="numero" type="password" inputmode="numeric" maxlength="20" autocomplete="off" placeholder="Numero della tessera" aria-label="Numero della tessera master">
+            <input name="numero" type="text" class="segreto" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" inputmode="numeric" maxlength="20" placeholder="Numero della tessera" aria-label="Numero della tessera master">
             <button type="button" class="btn piccolo" id="mOcchio" aria-pressed="false" title="Mostra o nascondi il numero">Mostra</button>
           </div>
           <div class="riga-letture">
@@ -283,6 +284,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     <details class="scheda" id="sMioAccount" hidden>
       <summary>Il mio account</summary>
       <form id="fMiaPass" novalidate>
+        <label>Utente<input name="username" id="miaUtente" autocomplete="username" readonly></label>
         <label>Password attuale<input name="attuale" type="password" autocomplete="current-password"></label>
         <label>Nuova password <small>(almeno 6 caratteri)</small>
           <input name="nuova" type="password" autocomplete="new-password"></label>
@@ -357,7 +359,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
         </div>
         <p class="nota">Dà accesso alla pagina da fuori casa. Da fuori è protetta solo dalla password: tienila lunga.</p>
         <form id="fToken" novalidate>
-          <label>Nuovo token del tunnel<input name="token" type="password" autocomplete="off" spellcheck="false" placeholder="eyJ…"></label>
+          <label>Nuovo token del tunnel<input name="token" type="text" class="segreto" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" placeholder="eyJ…"></label>
           <p class="errore" id="eToken" role="alert"></p>
           <button class="btn piccolo">Salva token</button>
         </form>
@@ -368,17 +370,17 @@ details.scheda[open] > summary { margin-bottom: 14px; }
         <p class="nota">La password di accesso (utente admin) di ciascun dispositivo.</p>
         <form class="fPassword" data-dev="placca" novalidate>
           <h3>Placca</h3>
-          <label>Password attuale<input name="attuale" type="password" autocomplete="current-password"></label>
-          <label>Nuova password <small>(6-16 lettere o cifre)</small><input name="nuova" type="password" autocomplete="new-password"></label>
-          <label>Ripeti la nuova<input name="ripeti" type="password" autocomplete="new-password"></label>
+          <label>Password attuale<input name="attuale" type="text" class="segreto" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true"></label>
+          <label>Nuova password <small>(6-16 lettere o cifre)</small><input name="nuova" type="text" class="segreto" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true"></label>
+          <label>Ripeti la nuova<input name="ripeti" type="text" class="segreto" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true"></label>
           <p class="errore" role="alert"></p>
           <button class="btn piccolo">Cambia password della placca</button>
         </form>
         <form class="fPassword" data-dev="monitor" novalidate>
           <h3>Monitor</h3>
-          <label>Password attuale<input name="attuale" type="password" autocomplete="off"></label>
-          <label>Nuova password <small>(6-10 lettere o cifre)</small><input name="nuova" type="password" autocomplete="off"></label>
-          <label>Ripeti la nuova<input name="ripeti" type="password" autocomplete="off"></label>
+          <label>Password attuale<input name="attuale" type="text" class="segreto" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true"></label>
+          <label>Nuova password <small>(6-10 lettere o cifre)</small><input name="nuova" type="text" class="segreto" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true"></label>
+          <label>Ripeti la nuova<input name="ripeti" type="text" class="segreto" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true"></label>
           <p class="errore" role="alert"></p>
           <button class="btn piccolo">Cambia password del monitor</button>
         </form>
@@ -415,7 +417,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
           <label>Porta telnet <small>(di solito 9900)</small>
             <input name="mon_port" inputmode="numeric" placeholder="9900"></label>
           <label>Utente di manutenzione<input name="mon_user" autocomplete="off" placeholder="root"></label>
-          <label>Password di manutenzione<input name="mon_pass" type="password" autocomplete="new-password" placeholder="(vuoto = non cambiarla)"></label>
+          <label>Password di manutenzione<input name="mon_pass" type="text" class="segreto" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" placeholder="(vuoto = non cambiarla)"></label>
           <label>IP della placca <small>(lato 2 fili)</small>
             <input name="placca_ip" inputmode="decimal" placeholder="192.168.68.70"></label>
           <label>Porta del relay <small>(di solito 8070)</small>
@@ -434,7 +436,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
           <form id="fHotspot" novalidate>
             <label>Nome dell’hotspot<input name="hs_ssid" placeholder="citofono-setup"></label>
             <label>Password <small>(almeno 8 caratteri)</small>
-              <input name="hs_pass" type="password" autocomplete="new-password" placeholder="(vuoto = non cambiarla)"></label>
+              <input name="hs_pass" type="text" class="segreto" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" placeholder="(vuoto = non cambiarla)"></label>
             <p class="errore" id="eHotspot" role="alert"></p>
             <button class="btn piccolo primario">Salva hotspot</button>
           </form>
@@ -445,7 +447,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
           <div id="rReti"></div>
           <form id="fWifi" novalidate>
             <label>Rete<input name="ssid" placeholder="nome della rete"></label>
-            <label>Password<input name="wifi_pass" type="password" autocomplete="off"></label>
+            <label>Password<input name="wifi_pass" type="text" class="segreto" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true"></label>
             <p class="errore" id="eWifi" role="alert"></p>
             <button class="btn piccolo primario">Collega</button>
           </form>
@@ -456,15 +458,15 @@ details.scheda[open] > summary { margin-bottom: 14px; }
         <summary>Utenti della pagina</summary>
         <form id="fPlaccaCred" novalidate>
           <label>Password della placca <small>— <span id="uPlacca" class="stato spento">…</span></small>
-            <input name="placca_pass" type="password" autocomplete="off" placeholder="(vuoto = lasciala com’è)"></label>
+            <input name="placca_pass" type="text" class="segreto" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" placeholder="(vuoto = lasciala com’è)"></label>
           <p class="errore" id="ePlaccaCred" role="alert"></p>
           <button class="btn piccolo primario">Salva password placca</button>
         </form>
         <div id="uLista" class="nota" style="margin-top:16px">…</div>
         <form id="fUtente" novalidate>
-          <label>Nuovo utente<input name="pin_user" autocomplete="off" placeholder="es. mario"></label>
+          <label>Nuovo utente<input name="pin_user" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" data-1p-ignore placeholder="es. mario"></label>
           <label>Password <small>(almeno 6 caratteri)</small>
-            <input name="pin_pass" type="password" autocomplete="new-password"></label>
+            <input name="pin_pass" type="text" class="segreto" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true"></label>
           <label>Ruolo
             <select name="ruolo">
               <option value="user">utente — vede solo i PIN assegnati</option>
@@ -478,7 +480,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
       <details class="scheda">
         <summary>Password dell’Admin</summary>
         <form id="fCred" novalidate>
-          <label>Utente gestore<input name="utente" autocomplete="username"></label>
+          <label>Utente gestore<input name="utente" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false"></label>
           <label>Nuova password <small>(almeno 12 caratteri)</small>
             <input name="password" type="password" autocomplete="new-password"></label>
           <label>Ripeti password<input name="ripeti" type="password" autocomplete="new-password"></label>
@@ -767,7 +769,8 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     try { j = json(await invia({ op: 'chisono' })); } catch (e) { /* compat: puo' non esistere */ }
     S.ruolo = j.ruolo || 'admin'; S.account = j.user || '';
     document.body.dataset.ruolo = S.ruolo;
-    const mio = $('#sMioAccount'); if (mio) mio.hidden = !S.account;   // solo chi ha un account proprio
+    const mio = $('#sMioAccount'); if (mio) mio.hidden = !S.account;
+    if ($('#miaUtente')) $('#miaUtente').value = S.account;   // solo chi ha un account proprio
     S.assegnabili = []; S.proprieta = {};
     if (S.ruolo !== 'user') {
       try { const p = json(await invia({ op: 'proprieta' })); S.assegnabili = p.utenti || []; S.proprieta = p.mappa || {}; }
@@ -2026,7 +2029,7 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     err.textContent = '';
     try { await occupato(() => invia({ op: 'cambia_password', pass: f.attuale.value, nuova: f.nuova.value })); }
     catch (e) { err.textContent = e.message; return; }
-    f.reset(); avviso('Password dell’account cambiata', 'ok');
+    f.reset(); $('#miaUtente').value = S.account; avviso('Password dell’account cambiata', 'ok');
   }
   async function salvaCredGestore(ev) {
     ev.preventDefault(); const f = ev.currentTarget, err = $('#eCred');
@@ -2130,8 +2133,8 @@ details.scheda[open] > summary { margin-bottom: 14px; }
     $('#fMaster').addEventListener('input', (ev) => { ev.currentTarget.dataset.sporco = '1'; });
     $('#fMaster').attiva.addEventListener('change', (ev) => { $('#fMaster').dataset.sporco = '1'; $('#mRiga').hidden = !ev.currentTarget.checked; });
     $('#mOcchio').addEventListener('click', (ev) => {
-      const inp = $('#fMaster').numero, b = ev.currentTarget, mostra = inp.type === 'password';
-      inp.type = mostra ? 'text' : 'password'; b.textContent = mostra ? 'Nascondi' : 'Mostra';
+      const inp = $('#fMaster').numero, b = ev.currentTarget, mostra = inp.classList.contains('segreto');
+      inp.classList.toggle('segreto', !mostra); b.textContent = mostra ? 'Nascondi' : 'Mostra';
       b.setAttribute('aria-pressed', String(mostra));
     });
     $('#fPersona').addEventListener('input', aggiornaModulo);
